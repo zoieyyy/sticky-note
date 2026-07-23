@@ -1089,8 +1089,16 @@ window.addEventListener('pointermove', (e)=>{
   if(!popoverDrag) return;
   const dx = (e.clientX - popoverDrag.startX) / cam.scale;
   const dy = (e.clientY - popoverDrag.startY) / cam.scale;
-  popoverDrag.pop.style.left = (popoverDrag.origLeft + dx) + 'px';
-  popoverDrag.pop.style.top = (popoverDrag.origTop + dy) + 'px';
+  
+  let newLeft = popoverDrag.origLeft + dx;
+  let newTop = popoverDrag.origTop + dy;
+
+  // Constrain the popover's position relative to the note.
+  newLeft = Math.max(-280, Math.min(480, newLeft));
+  newTop = Math.max(-300, Math.min(350, newTop));
+
+  popoverDrag.pop.style.left = newLeft + 'px';
+  popoverDrag.pop.style.top = newTop + 'px';
 });
 
 window.addEventListener('pointerup', ()=>{
