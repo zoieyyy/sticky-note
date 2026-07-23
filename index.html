@@ -528,19 +528,26 @@
   /* --- Retro Windows (95) --- */
   body[data-theme="retro-windows"]{
     --cork-1:#008080; --cork-2:#006666; --dot: rgba(255,255,255,0.07);
-    --paper-yellow:#c0c0c0; --paper-pink:#c0c0c0; --paper-mint:#c0c0c0;
-    --paper-blue:#c0c0c0; --paper-lilac:#c0c0c0;
+    /* Set paper vars so the toolbar swatches show the titlebar colors */
+    --paper-yellow:#c0c000; --paper-pink:#c00060; --paper-mint:#00c060;
+    --paper-blue:#1084d0; --paper-lilac:#8000c0;
     --ink:#000000; --ui-bg:#c0c0c0; --ui-bg-2:#dfdfdf;
     --ui-text:#000000; --ui-text-dim:#4a4a4a; --accent:#000080;
     --note-font:'Courier New', monospace; --note-radius:0px; --ui-radius:0px;
   }
+  
+  /* Force note background to classic gray, ignoring the color swatch */
+  body[data-theme="retro-windows"] .note[data-color] {
+    background: #c0c0c0;
+  }
+  
   body[data-theme="retro-windows"] .note{
     box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff,
                 inset -2px -2px #808080, inset 2px 2px #dfdfdf,
                 5px 5px 0 rgba(0,0,0,0.35);
     padding-top:30px;
   }
-  /* Meaningful Colors for Titlebars! */
+  /* Meaningful Colors for Titlebars */
   body[data-theme="retro-windows"] .note[data-color="yellow"]::before{ background: linear-gradient(90deg, #808000, #c0c000); }
   body[data-theme="retro-windows"] .note[data-color="pink"]::before{ background: linear-gradient(90deg, #800040, #c00060); }
   body[data-theme="retro-windows"] .note[data-color="mint"]::before{ background: linear-gradient(90deg, #008040, #00c060); }
@@ -593,16 +600,19 @@
   /* --- Hacker Board --- */
   body[data-theme="hacker"]{
     --cork-1:#020402; --cork-2:#000; --dot: rgba(0,255,90,0.08);
-    --paper-yellow:#031a08; --paper-pink:#031a08; --paper-mint:#031a08;
-    --paper-blue:#031a08; --paper-lilac:#031a08;
+    /* Bright neon colors for the toolbar swatches */
+    --paper-yellow:#ffea00; --paper-pink:#ff3399; --paper-mint:#39ff6a;
+    --paper-blue:#00e5ff; --paper-lilac:#b266ff;
     --ink:#39ff6a; --ui-bg:#010401; --ui-bg-2:#04140a;
     --ui-text:#39ff6a; --ui-text-dim:#1f8f45; --accent:#00ff66;
     --note-font:'Courier New', monospace; --note-radius:2px;
   }
-  body[data-theme="hacker"] .note{
-    border: 1px solid #1f8f45 !important;
-    box-shadow: 0 0 12px rgba(0,255,90,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  
+  /* Force note background to very dark green/black */
+  body[data-theme="hacker"] .note[data-color] {
+    background: #030a05;
   }
+  
   body[data-theme="hacker"] .note::before{ display:none; }
   body[data-theme="hacker"] .note::after{ display:none; }
   body[data-theme="hacker"] #themeFX{ display:block; }
@@ -610,11 +620,37 @@
     content:""; position:absolute; inset:0;
     background: repeating-linear-gradient(0deg, rgba(0,255,90,0.05) 0px, transparent 1px, transparent 3px);
   }
+
+  /* Map each data-color to distinct neon ink, borders, and glows */
+  body[data-theme="hacker"] .note[data-color="yellow"]{
+    --ink: #ffea00;
+    border: 1px solid #807500 !important;
+    box-shadow: 0 0 12px rgba(255,234,0,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+  body[data-theme="hacker"] .note[data-color="pink"]{
+    --ink: #ff3399;
+    border: 1px solid #80194c !important;
+    box-shadow: 0 0 12px rgba(255,51,153,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+  body[data-theme="hacker"] .note[data-color="mint"]{
+    --ink: #39ff6a;
+    border: 1px solid #1f8f45 !important;
+    box-shadow: 0 0 12px rgba(0,255,90,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+  body[data-theme="hacker"] .note[data-color="blue"]{
+    --ink: #00e5ff;
+    border: 1px solid #007280 !important;
+    box-shadow: 0 0 12px rgba(0,229,255,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+  body[data-theme="hacker"] .note[data-color="lilac"]{
+    --ink: #b266ff;
+    border: 1px solid #593380 !important;
+    box-shadow: 0 0 12px rgba(178,102,255,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+
   /* Hide irrelevant styling tools */
   body[data-theme="hacker"] .popover section.sec-color,
   body[data-theme="hacker"] .popover section.sec-border { display: none; }
-
-
   /* Mobile adjustments */
   @media (max-width: 640px) {
     #brand { display:none; }
