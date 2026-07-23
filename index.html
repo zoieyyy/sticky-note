@@ -461,7 +461,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getDatabase, ref, push, set, update, remove, onChildAdded,
-  onChildChanged, onChildRemoved, onValue, onDisconnect, serverTimestamp
+  onChildChanged, onChildRemoved, onValue, onDisconnect, get
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // ---------- firebase setup ----------
@@ -479,6 +479,44 @@ let currentRoom = 'default';
 let notesRef = null;
 let presenceRootRef = null;
 let activeListeners = { notes: null, presence: null };
+let migrationDone = false;
+
+// ---------- Migration: Move old notes to /rooms/default/notes ----------
+async function migrateOldNotes() {
+  if (migrationDone) return;
+  migrationDone = true;
+  
+  try {
+    const oldNotesRef = ref(db, 'notes');
+    const snapshot = await get(oldNotesRef);
+    
+    if (snapshot.exists()) {
+      const oldNotes = snapshot.val();
+      const defaultNotesRef = ref(db, 'rooms/default/notes');
+      
+      // Check if default room already has notes
+      const defaultSnapshot = await get(defaultNotesRef);
+      
+      if (!defaultSnapshot.exists()) {
+        // Move all old notes to default room
+        console.log('Migrating existing notes to default room...');
+        await set(defaultNotesRef, oldNotes);
+        console.log(`Migrated ${Object.keys(oldNotes).length} notes to default room`);
+        
+        // Optional: Keep old notes as backup or remove them
+        // You can uncomment this to remove old notes after migration
+        // await set(oldNotesRef, null);
+        // console.log('Old notes removed after migration');
+      } else {
+        console.log('Default room already has notes, skipping migration');
+      }
+    } else {
+      console.log('No old notes found to migrate');
+    }
+  } catch (err) {
+    console.warn('Migration failed (might be expected if no old notes):', err);
+  }
+}
 
 // ---------- Room management ----------
 function getRoomNotesRef(room) {
@@ -632,9 +670,13 @@ signInAnonymously(auth).catch(err=>{
   console.error(err);
 });
 
-onAuthStateChanged(auth, (user)=>{
+onAuthStateChanged(auth, async (user)=>{
   if(user){
     uid = user.uid;
+    
+    // Run migration once when user first authenticates
+    await migrateOldNotes();
+    
     // Check for room in URL hash or localStorage
     const hash = window.location.hash.slice(1);
     const savedRoom = localStorage.getItem('corkboard-room');
