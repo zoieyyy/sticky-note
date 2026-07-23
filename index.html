@@ -147,12 +147,12 @@
   }
 
   .popover{
-    position:absolute; top:30px; right:0;
+    position:absolute;
     width:212px;
     background: var(--ui-bg);
     border:1px solid rgba(255,255,255,0.1);
     border-radius:12px;
-    padding:12px;
+    padding:0 12px 12px;
     box-shadow: 0 16px 34px rgba(0,0,0,0.55);
     z-index:1000000;
     display:none;
@@ -160,6 +160,29 @@
     touch-action:auto;
   }
   .popover.open{ display:block; }
+  .popover-header{
+    display:flex; align-items:center; gap:6px;
+    margin:0 -12px 10px; padding:8px 10px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    border-radius:12px 12px 0 0;
+    background: var(--ui-bg-2);
+    cursor:grab;
+    touch-action:none;
+  }
+  .popover-header:active{ cursor:grabbing; }
+  .popover-header .handle{
+    color: var(--ui-text-dim); font-size:12px; letter-spacing:1px;
+  }
+  .popover-header .title{
+    flex:1; font-size:11.5px; font-weight:600; color: var(--ui-text);
+  }
+  .popover-header .closeBtn{
+    width:18px; height:18px; border:none; border-radius:50%;
+    background: rgba(255,255,255,0.08); color: var(--ui-text-dim);
+    font-size:10px; line-height:18px; text-align:center; cursor:pointer;
+    padding:0;
+  }
+  .popover-header .closeBtn:hover{ background: rgba(255,255,255,0.18); color: var(--ui-text); }
   .popover section{ margin-bottom:10px; }
   .popover section:last-child{ margin-bottom:0; }
   .popover label{
@@ -626,7 +649,7 @@ function buildNoteEl(id, n){
     btn.textContent = '⚙';
     btn.title = 'Customize';
     btn.addEventListener('pointerdown', e=> e.stopPropagation());
-    const pop = buildPopover(id);
+    const pop = buildPopover(id, el);
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const willOpen = !pop.classList.contains('open');
@@ -654,11 +677,37 @@ function buildNoteEl(id, n){
   return el;
 }
 
-function buildPopover(id){
+function buildPopover(id, noteEl){
   const pop = document.createElement('div');
   pop.className = 'popover';
   pop.addEventListener('pointerdown', e => e.stopPropagation());
   pop.addEventListener('click', e => e.stopPropagation());
+
+  // default position: to the right of the note, clear of the text area
+  pop.style.left = (NOTE_W + 12) + 'px';
+  pop.style.top = '0px';
+
+  const header = document.createElement('div');
+  header.className = 'popover-header';
+  const handle = document.createElement('span');
+  handle.className = 'handle';
+  handle.textContent = '⠿';
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = 'Customize — drag to move';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'closeBtn';
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Close';
+  closeBtn.addEventListener('click', ()=>{
+    pop.classList.remove('open');
+    const btn = noteEl.querySelector('.customizeBtn');
+    if(btn) btn.classList.remove('open');
+    if(openPopover === pop) openPopover = null;
+  });
+  header.append(handle, title, closeBtn);
+  pop.appendChild(header);
+  makePopoverDraggable(pop, header);
 
   // color
   const colorSection = document.createElement('section');
@@ -955,6 +1004,34 @@ window.addEventListener('pointerup', ()=>{
     update(ref(db, `notes/${noteId}/stickers/${sid}`), { x: _x, y: _y });
   }
   stickerDrag = null;
+});
+
+// ---------- popover dragging (local-only positioning, not synced) ----------
+let popoverDrag = null;
+
+function makePopoverDraggable(pop, header){
+  header.addEventListener('pointerdown', (e)=>{
+    e.stopPropagation();
+    popoverDrag = {
+      pop,
+      startX: e.clientX, startY: e.clientY,
+      origLeft: parseFloat(pop.style.left) || 0,
+      origTop: parseFloat(pop.style.top) || 0
+    };
+    header.setPointerCapture(e.pointerId);
+  });
+}
+
+window.addEventListener('pointermove', (e)=>{
+  if(!popoverDrag) return;
+  const dx = (e.clientX - popoverDrag.startX) / cam.scale;
+  const dy = (e.clientY - popoverDrag.startY) / cam.scale;
+  popoverDrag.pop.style.left = (popoverDrag.origLeft + dx) + 'px';
+  popoverDrag.pop.style.top = (popoverDrag.origTop + dy) + 'px';
+});
+
+window.addEventListener('pointerup', ()=>{
+  popoverDrag = null;
 });
 
 // ---------- adding notes ----------
