@@ -66,7 +66,7 @@
     position:absolute; left:0; top:0;
     transform-origin: 0 0;
     will-change: transform;
-    transition: transform 0.1s linear; /* Smooths programmatic panning */
+    transition: transform 0.1s linear;
   }
 
   .note{
@@ -179,11 +179,12 @@
   .note:hover .customizeBtn, .note .customizeBtn.open{ opacity:0.8; }
   .note .customizeBtn:hover{ background: rgba(0,0,0,0.25); opacity:1 !important; }
 
+  /* Theme-adaptive Owner / Author Tag */
   .note .ownerTag{
     position:absolute; top:6px; left:9px;
-    font-size:10px; color: rgba(44,32,19,0.5);
-    z-index:1; pointer-events:none;
-    font-weight: 600;
+    font-size:10px; color: var(--ink); opacity: 0.65;
+    z-index:2; pointer-events:none;
+    font-weight: 700;
   }
 
   .popover{
@@ -528,7 +529,6 @@
   /* --- Retro Windows (95) --- */
   body[data-theme="retro-windows"]{
     --cork-1:#008080; --cork-2:#006666; --dot: rgba(255,255,255,0.07);
-    /* Set paper vars so the toolbar swatches show the titlebar colors */
     --paper-yellow:#c0c000; --paper-pink:#c00060; --paper-mint:#00c060;
     --paper-blue:#1084d0; --paper-lilac:#8000c0;
     --ink:#000000; --ui-bg:#c0c0c0; --ui-bg-2:#dfdfdf;
@@ -536,7 +536,6 @@
     --note-font:'Courier New', monospace; --note-radius:0px; --ui-radius:0px;
   }
   
-  /* Force note background to classic gray, ignoring the color swatch */
   body[data-theme="retro-windows"] .note[data-color] {
     background: #c0c0c0;
   }
@@ -547,7 +546,7 @@
                 5px 5px 0 rgba(0,0,0,0.35);
     padding-top:30px;
   }
-  /* Meaningful Colors for Titlebars */
+  
   body[data-theme="retro-windows"] .note[data-color="yellow"]::before{ background: linear-gradient(90deg, #808000, #c0c000); }
   body[data-theme="retro-windows"] .note[data-color="pink"]::before{ background: linear-gradient(90deg, #800040, #c00060); }
   body[data-theme="retro-windows"] .note[data-color="mint"]::before{ background: linear-gradient(90deg, #008040, #00c060); }
@@ -584,8 +583,17 @@
                 inset -2px -2px #808080, inset 2px 2px #dfdfdf,
                 3px 3px 0 rgba(0,0,0,0.3);
   }
-  /* Hide irrelevant borders section */
   body[data-theme="retro-windows"] .popover section.sec-border { display: none; }
+  
+  /* Reposition author tag nicely into the Retro Windows title bar */
+  body[data-theme="retro-windows"] .note .ownerTag {
+    top: 4px;
+    left: auto;
+    right: 32px;
+    font-size: 9px;
+    color: #ffffff;
+    opacity: 0.9;
+  }
 
   /* --- Dark --- */
   body[data-theme="dark"]{
@@ -600,7 +608,6 @@
   /* --- Hacker Board --- */
   body[data-theme="hacker"]{
     --cork-1:#020402; --cork-2:#000; --dot: rgba(0,255,90,0.08);
-    /* Bright neon colors for the toolbar swatches */
     --paper-yellow:#ffea00; --paper-pink:#ff3399; --paper-mint:#39ff6a;
     --paper-blue:#00e5ff; --paper-lilac:#b266ff;
     --ink:#39ff6a; --ui-bg:#010401; --ui-bg-2:#04140a;
@@ -608,7 +615,6 @@
     --note-font:'Courier New', monospace; --note-radius:2px;
   }
   
-  /* Force note background to very dark green/black */
   body[data-theme="hacker"] .note[data-color] {
     background: #030a05;
   }
@@ -621,7 +627,6 @@
     background: repeating-linear-gradient(0deg, rgba(0,255,90,0.05) 0px, transparent 1px, transparent 3px);
   }
 
-  /* Map each data-color to distinct neon ink, borders, and glows */
   body[data-theme="hacker"] .note[data-color="yellow"]{
     --ink: #ffea00;
     border: 1px solid #807500 !important;
@@ -648,13 +653,9 @@
     box-shadow: 0 0 12px rgba(178,102,255,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
   }
 
-  /* Hide irrelevant styling tools (border only) */
   body[data-theme="hacker"] .popover section.sec-border { display: none; }
-  
-  /* Force color menu to appear in Hacker mode and apply neon colors */
   body[data-theme="hacker"] .popover section.sec-color { display: block !important; }
 
-  /* Force popover swatches to match theme variables (overrides JS inline styles) */
   .popover .swatch[data-color="yellow"] { background: var(--paper-yellow) !important; }
   .popover .swatch[data-color="pink"] { background: var(--paper-pink) !important; }
   .popover .swatch[data-color="mint"] { background: var(--paper-mint) !important; }
@@ -765,7 +766,6 @@ document.getElementById('setNameBtn').addEventListener('click', () => {
     if (input !== null) {
         displayName = input.trim().slice(0, 50);
         localStorage.setItem('corkboard-name', displayName);
-        // We don't retroactively apply to old notes, but new edits/creates will use it
     }
 });
 
@@ -848,7 +848,7 @@ const themeFX = document.getElementById('themeFX');
 
 function applyTheme(room){
   const theme = THEMES[room] || { label: 'Custom Room', fx: null };
-  const cssTheme = THEMES[room] ? room : 'default'; // Custom rooms just fall back to default styling
+  const cssTheme = THEMES[room] ? room : 'default';
   document.body.dataset.theme = cssTheme;
   
   const displayName = theme.label !== 'Custom Room' ? theme.label : room;
@@ -928,12 +928,11 @@ function attachListeners() {
       elsById[id] = el;
       world.appendChild(el);
       
-      // Fun subtle audio toast (if interacting recently)
       if (Date.now() - n.createdAt < 2000 && n.ownerId !== uid && !isSpectator) {
          try {
            const beep = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"+Array(200).join("A"));
            beep.volume = 0.05;
-           beep.play().catch(()=>{}); // Fails silently if user hasn't interacted
+           beep.play().catch(()=>{});
          } catch(e){}
       }
     }
@@ -999,7 +998,7 @@ function attachPresence() {
   });
 
   const unsubPresence = onValue(presenceRootRef, (snap)=>{
-    if (statusEl.classList.contains('offline')) return; // Don't override the reconnecting text
+    if (statusEl.classList.contains('offline')) return;
     const count = snap.exists() ? Object.keys(snap.val()).length : 0;
     statusText.textContent = count <= 1 ? 'You' : count + ' online';
   });
@@ -1034,7 +1033,6 @@ onAuthStateChanged(auth, async (user)=>{
     if (roomSelect.querySelector(`option[value="${room}"]`)) {
       roomSelect.value = room;
     } else {
-      // It's a custom room saved in hash or storage
       const opt = document.createElement('option');
       opt.value = room;
       opt.textContent = `🔒 ${room}`;
@@ -1125,9 +1123,8 @@ function isOwner(n){
   return !!(uid && n && n.ownerId === uid && !isSpectator);
 }
 
-// Ensure z-index is within 32-bit limits
 function getSafeZIndex(ts) {
-   return Math.max(1, (ts || 0) - 1704067200000); // offset from Jan 2024
+   return Math.max(1, (ts || 0) - 1704067200000);
 }
 
 // ---------- collision ----------
@@ -1275,7 +1272,6 @@ function buildNoteEl(id, n){
     text.addEventListener('input', ()=>{
       const len = text.textContent.length;
       
-      // Limit UI Warning logic
       if (len > 4500) {
           charWarning.textContent = `${len} / 5000 characters`;
           charWarning.classList.add('visible');
@@ -1283,12 +1279,10 @@ function buildNoteEl(id, n){
           charWarning.classList.remove('visible');
       }
 
-      // Hard Truncation 
       if (len > 5000) {
           const slice = text.textContent.slice(0, 5000);
           text.textContent = slice;
           charWarning.textContent = `5000 / 5000 characters (limit reached)`;
-          // Restore caret to end
           const range = document.createRange();
           const sel = window.getSelection();
           range.selectNodeContents(text);
@@ -1473,7 +1467,7 @@ function buildPopover(id, noteEl){
 
 function addSticker(noteId, emoji){
   const existing = noteStickers(notesById[noteId]);
-  if(Object.keys(existing).length >= 10) return; // keep notes from getting cluttered
+  if(Object.keys(existing).length >= 10) return;
   const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const jitterX = 40 + Math.random() * 20;
   const jitterY = 40 + Math.random() * 20;
@@ -1681,7 +1675,7 @@ document.getElementById('findMyNotesBtn').addEventListener('click', () => {
     const el = elsById[targetId];
     if (el) {
         el.classList.remove('pulse-focus');
-        void el.offsetWidth; // trigger reflow
+        void el.offsetWidth;
         el.classList.add('pulse-focus');
     }
 });
@@ -1721,7 +1715,6 @@ const addBtn = document.getElementById('addBtn');
 addBtn.addEventListener('click', ()=>{
   if(!uid){ return; }
   
-  // Rate limiter (Client-Side Cooldown)
   const now = Date.now();
   if (now - lastAddCall < 2000) {
       addBtn.disabled = true;
