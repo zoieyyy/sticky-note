@@ -376,6 +376,7 @@
   #brand b{ color: var(--ui-text); font-weight:600;}
 
   #status{
+    cursor: pointer;
     position:fixed; top:18px; right:20px;
     display:flex; align-items:center; gap:8px;
     font-size:13px; color: var(--ui-text-dim);
@@ -390,6 +391,25 @@
   }
   #status.connected .dot{ background: var(--good); box-shadow:0 0 6px var(--good); }
   #status.error .dot{ background:#e06457; }
+  #godBadge{
+    display:none;
+    font-size:11px; font-weight:700; color:#ffd166;
+    letter-spacing:0.03em;
+  }
+  #status.godmode #godBadge{ display:inline; }
+
+  .note .godDeleteBtn{
+    position:absolute; bottom:6px; left:9px;
+    width:22px; height:22px;
+    border:none; border-radius:50%;
+    background: rgba(200,40,30,0.85);
+    color:#fff;
+    font-size:12px; line-height:22px; text-align:center;
+    cursor:pointer;
+    z-index:10;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  .note .godDeleteBtn:hover{ background: rgba(230,60,45,1); }
 
   ::selection{ background: rgba(232,163,61,0.4); }
 
@@ -425,7 +445,7 @@
   <span class="roomBadge" id="roomBadge">#default</span>
 </div>
 
-<div id="status"><span class="dot"></span><span id="statusText">Connecting…</span></div>
+<div id="status"><span class="dot"></span><span id="statusText">Connecting…</span><span id="godBadge">⚡ GOD</span></div>
 
 <div id="viewport">
   <div id="world"></div>
@@ -461,7 +481,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getDatabase, ref, push, set, update, remove, onChildAdded,
-  onChildChanged, onChildRemoved, onValue, onDisconnect, get
+  onChildChanged, onChildRemoved, onValue, onDisconnect
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // ---------- firebase setup ----------
@@ -474,49 +494,70 @@ const statusText = document.getElementById('statusText');
 const roomSelect = document.getElementById('roomSelect');
 const roomBadge = document.getElementById('roomBadge');
 
+// ---------- god mode ----------
+// The password itself never lives in this file — the browser hashes whatever
+// is typed and tries to write it to a private /admins/{uid} node. The Firebase
+// rule only accepts that write if the hash matches the one baked into the
+// rules (server-side, never shipped to the browser). If Firebase accepts it,
+// you're admin; if not, the write is rejected and we treat that as "wrong
+// password." The client never needs to know — or store — the real password.
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+statusEl.addEventListener('click', ()=>{
+  if(godMode) return; // already in
+  godTapCount++;
+  clearTimeout(godTapTimer);
+  godTapTimer = setTimeout(()=>{ godTapCount = 0; }, 1500); // taps must be quick
+  if(godTapCount >= 5){
+    godTapCount = 0;
+    clearTimeout(godTapTimer);
+    promptForGodMode();
+  }
+});
+
+async function promptForGodMode(){
+  const pw = window.prompt('God mode password:');
+  if(!pw) return;
+  if(!uid){ window.alert('Still connecting — try again in a moment.'); return; }
+  const hash = await sha256Hex(pw);
+  try{
+    await set(ref(db, `admins/${uid}`), hash);
+    // Firebase accepted the write, which only happens if the hash matched
+    // the one baked into the rules. We're in.
+    godMode = true;
+    statusEl.classList.add('godmode');
+    Object.keys(elsById).forEach(id => addGodDeleteButton(elsById[id], id));
+  }catch(err){
+    window.alert('Wrong password.');
+  }
+}
+
+function addGodDeleteButton(el, id){
+  if(!godMode || el.querySelector('.godDeleteBtn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'godDeleteBtn';
+  btn.textContent = '🗑';
+  btn.title = 'Delete this note (god mode)';
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if(!window.confirm('Delete this note for everyone? This can\'t be undone.')) return;
+    remove(ref(db, `rooms/${currentRoom}/notes/${id}`));
+  });
+  el.appendChild(btn);
+}
+
 let uid = null;
+let godMode = false;
+let godTapCount = 0;
+let godTapTimer = null;
 let currentRoom = 'default';
 let notesRef = null;
 let presenceRootRef = null;
 let activeListeners = { notes: null, presence: null };
-let migrationDone = false;
-
-// ---------- Migration: Move old notes to /rooms/default/notes ----------
-async function migrateOldNotes() {
-  if (migrationDone) return;
-  migrationDone = true;
-  
-  try {
-    const oldNotesRef = ref(db, 'notes');
-    const snapshot = await get(oldNotesRef);
-    
-    if (snapshot.exists()) {
-      const oldNotes = snapshot.val();
-      const defaultNotesRef = ref(db, 'rooms/default/notes');
-      
-      // Check if default room already has notes
-      const defaultSnapshot = await get(defaultNotesRef);
-      
-      if (!defaultSnapshot.exists()) {
-        // Move all old notes to default room
-        console.log('Migrating existing notes to default room...');
-        await set(defaultNotesRef, oldNotes);
-        console.log(`Migrated ${Object.keys(oldNotes).length} notes to default room`);
-        
-        // Optional: Keep old notes as backup or remove them
-        // You can uncomment this to remove old notes after migration
-        // await set(oldNotesRef, null);
-        // console.log('Old notes removed after migration');
-      } else {
-        console.log('Default room already has notes, skipping migration');
-      }
-    } else {
-      console.log('No old notes found to migrate');
-    }
-  } catch (err) {
-    console.warn('Migration failed (might be expected if no old notes):', err);
-  }
-}
 
 // ---------- Room management ----------
 function getRoomNotesRef(room) {
@@ -537,6 +578,12 @@ function switchRoom(room) {
     activeListeners.presence();
     activeListeners.presence = null;
   }
+
+  // Close any open popover and clear in-progress drags before we rip out the DOM
+  if (openPopover) { openPopover.classList.remove('open'); openPopover = null; }
+  dragState = null;
+  stickerDrag = null;
+  popoverDrag = null;
 
   // Clear current notes
   Object.keys(elsById).forEach(id => {
@@ -673,9 +720,6 @@ signInAnonymously(auth).catch(err=>{
 onAuthStateChanged(auth, async (user)=>{
   if(user){
     uid = user.uid;
-    
-    // Run migration once when user first authenticates
-    await migrateOldNotes();
     
     // Check for room in URL hash or localStorage
     const hash = window.location.hash.slice(1);
@@ -873,17 +917,6 @@ function renderStickers(el, n, id, owner){
   });
 }
 
-function refreshOwnership(id){
-  const n = notesById[id];
-  const el = elsById[id];
-  if(!n || !el) return;
-  if(isOwner(n) && !el.dataset.ownerReady){
-    const rebuilt = buildNoteEl(id, n);
-    el.replaceWith(rebuilt);
-    elsById[id] = rebuilt;
-  }
-}
-
 function buildNoteEl(id, n){
   const el = document.createElement('div');
   const owner = isOwner(n);
@@ -947,6 +980,8 @@ function buildNoteEl(id, n){
   if(owner){
     el.addEventListener('pointerdown', (ev)=> startDragNote(ev, id, el));
   }
+
+  if(godMode) addGodDeleteButton(el, id);
 
   return el;
 }
@@ -1077,6 +1112,8 @@ function buildPopover(id, noteEl){
 }
 
 function addSticker(noteId, emoji){
+  const existing = noteStickers(notesById[noteId]);
+  if(Object.keys(existing).length >= 10) return; // keep notes from getting cluttered
   const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const jitterX = 40 + Math.random() * 20;
   const jitterY = 40 + Math.random() * 20;
