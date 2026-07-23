@@ -338,6 +338,7 @@
     padding:7px 12px; border-radius:10px;
     z-index:50;
     border: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
   }
   #status .dot{
     width:8px; height:8px; border-radius:50%;
@@ -400,6 +401,39 @@ const presenceRootRef = ref(db, 'presence');
 
 const statusEl = document.getElementById('status');
 const statusText = document.getElementById('statusText');
+
+// God Mode state
+let isGodMode = false;
+let statusClicks = 0;
+let statusClickTimer = null;
+
+statusEl.addEventListener('click', () => {
+  statusClicks++;
+  clearTimeout(statusClickTimer);
+  
+  if (statusClicks >= 5) {
+    statusClicks = 0; // Reset counter
+    if (!isGodMode) {
+      const pwd = prompt('Enter Admin Password:');
+      if (pwd === 'Passw0rd') {
+        isGodMode = true;
+        alert('God Mode Enabled: You can now delete any note.');
+        // Re-render all notes to reveal the delete buttons
+        Object.keys(notesById).forEach(id => refreshOwnership(id));
+      } else if (pwd !== null) {
+        alert('Incorrect password.');
+      }
+    } else {
+      isGodMode = false;
+      alert('God Mode Disabled.');
+      // Re-render all notes to hide the delete buttons
+      Object.keys(notesById).forEach(id => refreshOwnership(id));
+    }
+  } else {
+    // Reset clicks if they don't click 5 times within 1.5 seconds
+    statusClickTimer = setTimeout(() => { statusClicks = 0; }, 1500);
+  }
+});
 
 let uid = null;
 signInAnonymously(auth).catch(err=>{
@@ -599,11 +633,15 @@ function renderStickers(el, n, id, owner){
 }
 
 function refreshOwnership(id){
-  // called once auth resolves after a note was already drawn read-only
   const n = notesById[id];
   const el = elsById[id];
   if(!n || !el) return;
-  if(isOwner(n) && !el.dataset.ownerReady){
+  
+  const owner = isOwner(n);
+  const currentGodModeState = el.dataset.godMode === '1';
+
+  // Rebuild if it's an owner note that hasn't initialized, OR if the God Mode state changed
+  if( (owner && !el.dataset.ownerReady) || (!owner && currentGodModeState !== isGodMode) ){
     const rebuilt = buildNoteEl(id, n);
     el.replaceWith(rebuilt);
     elsById[id] = rebuilt;
@@ -615,7 +653,13 @@ function buildNoteEl(id, n){
   const owner = isOwner(n);
   el.className = 'note' + (owner ? '' : ' readonly');
   el.dataset.id = id;
-  if(owner) el.dataset.ownerReady = '1';
+  
+  if(owner){
+    el.dataset.ownerReady = '1';
+  } else if (isGodMode) {
+    el.dataset.godMode = '1'; // Track God Mode render state
+  }
+
   applyPosition(el, n);
   applyColor(el, n);
   applyBorderStyle(el, n);
@@ -661,11 +705,30 @@ function buildNoteEl(id, n){
     el.appendChild(btn);
     el.appendChild(pop);
   } else {
-    const tag = document.createElement('div');
-    tag.className = 'ownerTag';
-    tag.textContent = '🔒';
-    tag.title = 'Placed by another user';
-    el.appendChild(tag);
+    // ---- GOD MODE LOGIC INJECTED HERE ----
+    if (isGodMode) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'customizeBtn'; // Reuses your existing CSS styles
+      delBtn.textContent = '🗑️';
+      delBtn.title = 'God Mode: Delete Note';
+      delBtn.style.color = '#e0574a';
+      delBtn.style.opacity = '0.8';
+      
+      delBtn.addEventListener('pointerdown', e => e.stopPropagation());
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if(confirm('God Mode: Permanently delete this note?')) {
+          remove(ref(db, 'notes/' + id));
+        }
+      });
+      el.appendChild(delBtn);
+    } else {
+      const tag = document.createElement('div');
+      tag.className = 'ownerTag';
+      tag.textContent = '🔒';
+      tag.title = 'Placed by another user';
+      el.appendChild(tag);
+    }
   }
 
   renderStickers(el, n, id, owner);
