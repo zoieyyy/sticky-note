@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Corkboard — infinite sticky notes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    --cork-1: #4a3324;
+    --cork-2: #3c2a1e;
+    --dot: rgba(255,244,222,0.07);
+    --paper-yellow: #f6dd6b;
+    --paper-pink: #f3a6c1;
+    --paper-mint: #a3ddc2;
+    --paper-blue: #9bc9ef;
+    --paper-lilac: #c8aee9;
+    --ink: #2c2013;
+    --ui-bg: #24170f;
+    --ui-bg-2: #2f1f14;
+    --ui-text: #f3e6d3;
+    --ui-text-dim: #b9a58a;
+    --accent: #e8a33d;
+    --good: #7fd28a;
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    overflow:hidden;
+    background: var(--cork-1);
+    font-family: 'Inter', sans-serif;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  #viewport{
+    position:fixed; inset:0;
+    background-color: var(--cork-1);
+    background-image: radial-gradient(var(--dot) 1.6px, transparent 1.6px);
+    cursor: grab;
+    touch-action:none;
+  }
+  #viewport.panning{ cursor: grabbing; }
+  #viewport::before{
+    content:"";
+    position:absolute; inset:0;
+    pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, transparent 2px, transparent 90px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, transparent 1px, transparent 130px);
+    mix-blend-mode: overlay;
+    opacity:0.6;
+  }
+
+  #world{
+    position:absolute; left:0; top:0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  .note{
+    position:absolute;
+    width:210px;
+    min-height:190px;
+    padding:20px 18px 16px;
+    display:flex; flex-direction:column;
+    box-shadow: 0 10px 20px -6px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.3);
+    cursor: grab;
+    transition: box-shadow .15s ease, outline-color .15s ease;
+    touch-action:none;
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+  }
+  .note.dragging{
+    box-shadow: 0 22px 34px -8px rgba(0,0,0,0.65), 0 6px 10px rgba(0,0,0,0.4);
+    cursor: grabbing;
+    transition:none;
+    z-index: 999999 !important;
+  }
+  .note.remote-active{
+    outline-color: var(--good);
+  }
+  .note::before{
+    content:"";
+    position:absolute; top:-9px; left:50%;
+    width:26px; height:18px;
+    transform: translateX(-50%) rotate(-2deg);
+    background: linear-gradient(135deg, #d8d8d8, #9a9a9a 55%, #c8c8c8);
+    border-radius: 3px;
+    box-shadow: 0 3px 4px rgba(0,0,0,0.4);
+  }
+
+  .note[data-color="yellow"]{ background: var(--paper-yellow); }
+  .note[data-color="pink"]{ background: var(--paper-pink); }
+  .note[data-color="mint"]{ background: var(--paper-mint); }
+  .note[data-color="blue"]{ background: var(--paper-blue); }
+  .note[data-color="lilac"]{ background: var(--paper-lilac); }
+
+  .note::after{
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(200deg, rgba(255,255,255,0.25), transparent 40%);
+    pointer-events:none;
+  }
+
+  .note .text{
+    font-family:'Kalam', cursive;
+    font-size:17px;
+    line-height:1.35;
+    color: var(--ink);
+    flex:1;
+    outline:none;
+    white-space:pre-wrap;
+    word-break:break-word;
+    cursor:text;
+    -webkit-user-select:text; user-select:text;
+    position:relative; z-index:1;
+  }
+  .note .text:empty:before{
+    content: attr(data-placeholder);
+    opacity:0.45;
+  }
+
+  .note .del{
+    position:absolute; top:6px; right:8px;
+    width:20px; height:20px;
+    border:none; border-radius:50%;
+    background: rgba(0,0,0,0.12);
+    color: var(--ink);
+    font-size:13px; line-height:20px; text-align:center;
+    cursor:pointer;
+    opacity:0; transition: opacity .15s ease, background .15s ease;
+    z-index:2;
+  }
+  .note:hover .del{ opacity:0.75; }
+  .note .del:hover{ background: rgba(0,0,0,0.25); opacity:1 !important; }
+
+  /* Toolbar */
+  #toolbar{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px;
+    background: var(--ui-bg);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding:10px 14px;
+    border-radius:16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+    z-index:100;
+  }
+  .swatch{
+    width:26px; height:26px; border-radius:8px;
+    border: 2px solid transparent;
+    cursor:pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  .swatch[data-color="yellow"]{ background: var(--paper-yellow); }
+  .swatch[data-color="pink"]{ background: var(--paper-pink); }
+  .swatch[data-color="mint"]{ background: var(--paper-mint); }
+  .swatch[data-color="blue"]{ background: var(--paper-blue); }
+  .swatch[data-color="lilac"]{ background: var(--paper-lilac); }
+  .swatch.active{ border-color: var(--accent); }
+
+  #addBtn{
+    display:flex; align-items:center; justify-content:center;
+    width:38px; height:38px;
+    border-radius:12px;
+    background: var(--accent);
+    color:#2b1a05;
+    font-size:20px; font-weight:700;
+    border:none; cursor:pointer;
+    box-shadow: 0 4px 10px rgba(232,163,61,0.35);
+  }
+  #addBtn:hover{ filter:brightness(1.08); }
+
+  .divider{ width:1px; align-self:stretch; background: rgba(255,255,255,0.1); }
+
+  .zoomctl{
+    display:flex; align-items:center; gap:6px;
+    color: var(--ui-text-dim);
+    font-size:13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .zoomctl button{
+    width:26px; height:26px; border-radius:7px;
+    border:1px solid rgba(255,255,255,0.12);
+    background: var(--ui-bg-2);
+    color: var(--ui-text);
+    cursor:pointer; font-size:15px; line-height:1;
+  }
+  .zoomctl button:hover{ background:#3a2818; }
+
+  /* Empty state */
+  #empty{
+    position:fixed; left:50%; top:42%; transform:translate(-50%,-50%);
+    text-align:center;
+    color: var(--ui-text-dim);
+    pointer-events:none;
+    z-index:1;
+  }
+  #empty h1{
+    font-family:'Kalam', cursive;
+    color: var(--ui-text);
+    font-size:26px; margin:0 0 6px;
+    font-weight:700;
+  }
+  #empty p{ margin:0; font-size:14px; }
+
+  #brand{
+    position:fixed; top:18px; left:20px;
+    color: var(--ui-text-dim);
+    font-size:13px; letter-spacing:0.02em;
+    z-index:50; pointer-events:none;
+    display:flex; align-items:center; gap:10px;
+  }
+  #brand b{ color: var(--ui-text); font-weight:600;}
+
+  #status{
+    position:fixed; top:18px; right:20px;
+    display:flex; align-items:center; gap:8px;
+    font-size:13px; color: var(--ui-text-dim);
+    background: rgba(36,23,15,0.8);
+    padding:7px 12px; border-radius:10px;
+    z-index:50;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  #status .dot{
+    width:8px; height:8px; border-radius:50%;
+    background: #888;
+  }
+  #status.connected .dot{ background: var(--good); box-shadow:0 0 6px var(--good); }
+  #status.error .dot{ background:#e06457; }
+
+  ::selection{ background: rgba(232,163,61,0.4); }
+</style>
+</head>
+<body>
+
+<div id="brand"><b>Corkboard</b> · infinite</div>
+<div id="status"><span class="dot"></span><span id="statusText">Connecting…</span></div>
+
+<div id="viewport">
+  <div id="world"></div>
+</div>
+
+<div id="empty">
+  <h1>Nothing pinned yet</h1>
+  <p>Click + and drop a note anywhere. Anyone with this link sees it too.</p>
+</div>
+
+<div id="toolbar">
+  <button class="swatch active" data-color="yellow"></button>
+  <button class="swatch" data-color="pink"></button>
+  <button class="swatch" data-color="mint"></button>
+  <button class="swatch" data-color="blue"></button>
+  <button class="swatch" data-color="lilac"></button>
+  <div class="divider"></div>
+  <button id="addBtn" title="Add note">+</button>
+  <div class="divider"></div>
+  <div class="zoomctl">
+    <button id="zoomOut">–</button>
+    <span id="zoomLabel">100%</span>
+    <button id="zoomIn">+</button>
+    <button id="zoomReset" title="Reset view">⌂</button>
+  </div>
+</div>
+
+<script type="module">
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getDatabase, ref, push, set, update, remove, onChildAdded,
+  onChildChanged, onChildRemoved, onValue, onDisconnect, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// ---------- firebase setup ----------
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+const notesRef = ref(db, 'notes');
+const presenceRootRef = ref(db, 'presence');
+
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+
+let uid = null;
+signInAnonymously(auth).catch(err=>{
+  statusEl.className = 'error';
+  statusText.textContent = 'Sign-in failed';
+  console.error(err);
+});
+onAuthStateChanged(auth, (user)=>{
+  if(user){
+    uid = user.uid;
+    const myPresenceRef = ref(db, 'presence/' + uid);
+    onValue(ref(db, '.info/connected'), (snap)=>{
+      if(snap.val() === true){
+        set(myPresenceRef, true);
+        onDisconnect(myPresenceRef).remove();
+        statusEl.className = 'connected';
+      } else {
+        statusEl.className = '';
+        statusText.textContent = 'Reconnecting…';
+      }
+    });
+  }
+});
+onValue(presenceRootRef, (snap)=>{
+  const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+  statusText.textContent = count <= 1 ? 'You' : count + ' online';
+});
+
+// ---------- app state ----------
+const viewport = document.getElementById('viewport');
+const world = document.getElementById('world');
+const empty = document.getElementById('empty');
+const zoomLabel = document.getElementById('zoomLabel');
+const VIEW_KEY = 'corkboard-view-v1'; // camera is local-only, not synced
+
+const notesById = {};   // id -> note data {x,y,text,color,rot,updatedAt}
+const elsById = {};     // id -> DOM element
+let activeColor = 'yellow';
+let cam = { x: 0, y: 0, scale: 1 };
+
+// local camera persists per-browser only
+try{
+  const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
+  if(saved) cam = saved;
+}catch(e){}
+
+function saveCamera(){
+  localStorage.setItem(VIEW_KEY, JSON.stringify(cam));
+}
+
+// ---------- collision ----------
+const NOTE_W = 210, NOTE_H = 190, GAP = 18;
+
+function rectsOverlap(ax, ay, bx, by){
+  return !(ax + NOTE_W + GAP <= bx || bx + NOTE_W + GAP <= ax ||
+           ay + NOTE_H + GAP <= by || by + NOTE_H + GAP <= ay);
+}
+function collidesAt(excludeId, x, y){
+  for(const id in notesById){
+    if(id === excludeId) continue;
+    const o = notesById[id];
+    if(rectsOverlap(x, y, o.x, o.y)) return true;
+  }
+  return false;
+}
+function findFreeSpot(x0, y0, excludeId){
+  if(!collidesAt(excludeId, x0, y0)) return { x:x0, y:y0 };
+  let radius = 30;
+  while(radius < 6000){
+    const steps = 12;
+    for(let i=0;i<steps;i++){
+      const angle = (i/steps)*Math.PI*2;
+      const x = x0 + Math.cos(angle)*radius;
+      const y = y0 + Math.sin(angle)*radius;
+      if(!collidesAt(excludeId, x, y)) return { x, y };
+    }
+    radius += 30;
+  }
+  return { x:x0, y:y0 };
+}
+
+// ---------- render helpers ----------
+function updateEmptyState(){
+  empty.style.display = Object.keys(notesById).length ? 'none' : 'block';
+}
+
+function applyPosition(el, n){
+  el.style.left = n.x + 'px';
+  el.style.top = n.y + 'px';
+  el.style.transform = `rotate(${n.rot}deg)`;
+  el.style.zIndex = n.updatedAt || 1;
+}
+
+function buildNoteEl(id, n){
+  const el = document.createElement('div');
+  el.className = 'note';
+  el.dataset.id = id;
+  el.dataset.color = n.color;
+  applyPosition(el, n);
+
+  const del = document.createElement('button');
+  del.className = 'del';
+  del.textContent = '✕';
+  del.addEventListener('pointerdown', e => e.stopPropagation());
+  del.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    remove(ref(db, 'notes/' + id));
+  });
+
+  const text = document.createElement('div');
+  text.className = 'text';
+  text.contentEditable = 'true';
+  text.dataset.placeholder = 'Type something…';
+  text.textContent = n.text || '';
+  text.addEventListener('pointerdown', e => e.stopPropagation());
+
+  let typingTimer = null;
+  text.addEventListener('input', ()=>{
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(()=>{
+      update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
+    }, 400);
+  });
+  text.addEventListener('blur', ()=>{
+    clearTimeout(typingTimer);
+    update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
+  });
+
+  el.appendChild(del);
+  el.appendChild(text);
+  el.addEventListener('pointerdown', (ev)=> startDragNote(ev, id, el));
+
+  return el;
+}
+
+// ---------- firebase listeners: keep local state + DOM in sync ----------
+onChildAdded(notesRef, (snap)=>{
+  const id = snap.key;
+  const n = snap.val();
+  notesById[id] = n;
+  if(!elsById[id]){
+    const el = buildNoteEl(id, n);
+    elsById[id] = el;
+    world.appendChild(el);
+  }
+  updateEmptyState();
+});
+
+onChildChanged(notesRef, (snap)=>{
+  const id = snap.key;
+  const n = snap.val();
+  notesById[id] = n;
+  const el = elsById[id];
+  if(!el) return;
+
+  // don't let a remote echo fight a drag or a keystroke happening right now
+  if(el.classList.contains('dragging')) return;
+  applyPosition(el, n);
+
+  const textEl = el.querySelector('.text');
+  if(document.activeElement !== textEl && textEl.textContent !== (n.text || '')){
+    textEl.textContent = n.text || '';
+  }
+  if(el.dataset.color !== n.color){
+    el.dataset.color = n.color;
+  }
+});
+
+onChildRemoved(notesRef, (snap)=>{
+  const id = snap.key;
+  delete notesById[id];
+  const el = elsById[id];
+  if(el){ el.remove(); delete elsById[id]; }
+  updateEmptyState();
+});
+
+// ---------- camera ----------
+function applyCamera(){
+  world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+  const gridSize = 42 * cam.scale;
+  viewport.style.backgroundSize = `${gridSize}px ${gridSize}px`;
+  viewport.style.backgroundPosition = `${cam.x}px ${cam.y}px`;
+  zoomLabel.textContent = Math.round(cam.scale*100) + '%';
+}
+function screenToWorld(sx, sy){
+  return { x: (sx - cam.x) / cam.scale, y: (sy - cam.y) / cam.scale };
+}
+function zoomAt(screenX, screenY, factor){
+  const before = screenToWorld(screenX, screenY);
+  cam.scale = Math.min(3, Math.max(0.25, cam.scale * factor));
+  const after = screenToWorld(screenX, screenY);
+  cam.x += (after.x - before.x) * cam.scale;
+  cam.y += (after.y - before.y) * cam.scale;
+  applyCamera();
+  saveCamera();
+}
+
+viewport.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  if(e.ctrlKey || e.metaKey){
+    zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0025));
+  } else {
+    cam.x -= e.deltaX; cam.y -= e.deltaY;
+    applyCamera(); saveCamera();
+  }
+}, { passive:false });
+
+document.getElementById('zoomIn').addEventListener('click', ()=> zoomAt(innerWidth/2, innerHeight/2, 1.2));
+document.getElementById('zoomOut').addEventListener('click', ()=> zoomAt(innerWidth/2, innerHeight/2, 1/1.2));
+document.getElementById('zoomReset').addEventListener('click', ()=>{
+  cam = { x: innerWidth/2, y: innerHeight/2, scale: 1 };
+  applyCamera(); saveCamera();
+});
+
+// ---------- panning ----------
+let panState = null;
+viewport.addEventListener('pointerdown', (e)=>{
+  if(e.target !== viewport) return;
+  panState = { startX:e.clientX, startY:e.clientY, camX:cam.x, camY:cam.y };
+  viewport.classList.add('panning');
+  viewport.setPointerCapture(e.pointerId);
+});
+viewport.addEventListener('pointermove', (e)=>{
+  if(!panState) return;
+  cam.x = panState.camX + (e.clientX - panState.startX);
+  cam.y = panState.camY + (e.clientY - panState.startY);
+  applyCamera();
+});
+window.addEventListener('pointerup', ()=>{
+  if(panState){ panState = null; viewport.classList.remove('panning'); saveCamera(); }
+});
+
+// ---------- note dragging (throttled writes to Firebase) ----------
+let dragState = null;
+const DRAG_SYNC_MS = 70;
+
+function startDragNote(e, id, el){
+  e.stopPropagation();
+  if(e.target.classList.contains('text')) return;
+  const n = notesById[id];
+  el.classList.add('dragging');
+  dragState = {
+    id, el,
+    startX: e.clientX, startY: e.clientY,
+    origX: n.x, origY: n.y,
+    lastSync: 0
+  };
+  update(ref(db, 'notes/' + id), { updatedAt: Date.now() }); // bring to front for everyone
+  el.setPointerCapture(e.pointerId);
+}
+
+viewport.addEventListener('pointermove', (e)=>{
+  if(!dragState) return;
+  const n = notesById[dragState.id];
+  const dx = (e.clientX - dragState.startX) / cam.scale;
+  const dy = (e.clientY - dragState.startY) / cam.scale;
+  const wantX = dragState.origX + dx;
+  const wantY = dragState.origY + dy;
+
+  if(!collidesAt(dragState.id, wantX, wantY)){
+    n.x = wantX; n.y = wantY;
+  } else if(!collidesAt(dragState.id, wantX, n.y)){
+    n.x = wantX;
+  } else if(!collidesAt(dragState.id, n.x, wantY)){
+    n.y = wantY;
+  }
+  dragState.el.style.left = n.x + 'px';
+  dragState.el.style.top = n.y + 'px';
+
+  const now = Date.now();
+  if(now - dragState.lastSync > DRAG_SYNC_MS){
+    dragState.lastSync = now;
+    update(ref(db, 'notes/' + dragState.id), { x: n.x, y: n.y });
+  }
+});
+
+window.addEventListener('pointerup', ()=>{
+  if(!dragState) return;
+  const id = dragState.id;
+  const n = notesById[id];
+  dragState.el.classList.remove('dragging');
+  update(ref(db, 'notes/' + id), { x: n.x, y: n.y, updatedAt: Date.now() });
+  dragState = null;
+});
+
+// ---------- adding notes ----------
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  const center = screenToWorld(innerWidth/2, innerHeight/2);
+  const desiredX = center.x - NOTE_W/2;
+  const desiredY = center.y - NOTE_H/2;
+  const spot = findFreeSpot(desiredX, desiredY, null);
+
+  const newRef = push(notesRef);
+  const n = {
+    x: spot.x, y: spot.y,
+    text: '', color: activeColor,
+    rot: Number((Math.random()*6 - 3).toFixed(2)),
+    updatedAt: Date.now()
+  };
+  set(newRef, n).then(()=>{
+    const el = elsById[newRef.key];
+    if(el){
+      const t = el.querySelector('.text');
+      setTimeout(()=> t.focus(), 30);
+    }
+  });
+});
+
+// ---------- color swatches ----------
+document.querySelectorAll('.swatch').forEach(sw=>{
+  sw.addEventListener('click', ()=>{
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active');
+    activeColor = sw.dataset.color;
+  });
+});
+
+// ---------- init ----------
+if(!(JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'))){
+  cam = { x: innerWidth/2, y: innerHeight/2, scale: 1 };
+}
+applyCamera();
+updateEmptyState();
+window.addEventListener('resize', applyCamera);
+</script>
+
+</body>
+</html>
