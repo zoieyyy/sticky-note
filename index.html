@@ -305,11 +305,12 @@ onAuthStateChanged(auth, (user)=>{
         statusText.textContent = 'Reconnecting…';
       }
     });
+    // attach this only once we're authenticated, or the rules reject the read
+    onValue(presenceRootRef, (snap)=>{
+      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+      statusText.textContent = count <= 1 ? 'You' : count + ' online';
+    });
   }
-});
-onValue(presenceRootRef, (snap)=>{
-  const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-  statusText.textContent = count <= 1 ? 'You' : count + ' online';
 });
 
 // ---------- app state ----------
