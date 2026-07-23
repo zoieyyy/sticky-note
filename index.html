@@ -321,6 +321,51 @@
   }
   #empty p{ margin:0; font-size:14px; }
 
+  /* Room selector */
+  #roomSelector{
+    position:fixed; top:18px; left:50%;
+    transform:translateX(-50%);
+    display:flex; align-items:center; gap:8px;
+    background: var(--ui-bg);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding:6px 12px;
+    border-radius:12px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    z-index:100;
+  }
+  #roomSelector label{
+    color: var(--ui-text-dim);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+  }
+  #roomSelector select{
+    background: var(--ui-bg-2);
+    color: var(--ui-text);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:8px;
+    padding:4px 10px 4px 8px;
+    font-size:13px;
+    font-family:'Inter', sans-serif;
+    cursor:pointer;
+    outline:none;
+  }
+  #roomSelector select:hover{
+    border-color: var(--accent);
+  }
+  #roomSelector select option{
+    background: var(--ui-bg);
+    color: var(--ui-text);
+  }
+  #roomSelector .roomBadge{
+    font-size:11px;
+    color: var(--ui-text-dim);
+    padding:2px 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius:6px;
+  }
+
   #brand{
     position:fixed; top:18px; left:20px;
     color: var(--ui-text-dim);
@@ -338,7 +383,6 @@
     padding:7px 12px; border-radius:10px;
     z-index:50;
     border: 1px solid rgba(255,255,255,0.06);
-    cursor: pointer;
   }
   #status .dot{
     width:8px; height:8px; border-radius:50%;
@@ -348,11 +392,39 @@
   #status.error .dot{ background:#e06457; }
 
   ::selection{ background: rgba(232,163,61,0.4); }
+
+  /* Mobile adjustments */
+  @media (max-width: 640px) {
+    #brand { display:none; }
+    #status { top:65px; right:12px; font-size:11px; padding:4px 10px; }
+    #toolbar { padding:8px 10px; gap:6px; bottom:16px; flex-wrap:wrap; justify-content:center; max-width:98vw; }
+    .swatch { width:22px; height:22px; }
+    #addBtn { width:32px; height:32px; font-size:16px; }
+    .zoomctl button { width:22px; height:22px; font-size:13px; }
+    .zoomctl span { font-size:11px; }
+    #roomSelector { top:12px; padding:4px 10px; }
+    #roomSelector label { font-size:10px; }
+    #roomSelector select { font-size:11px; padding:2px 8px 2px 6px; }
+  }
 </style>
 </head>
 <body>
 
 <div id="brand"><b>Corkboard</b> · infinite</div>
+
+<div id="roomSelector">
+  <label>📋 Room</label>
+  <select id="roomSelect">
+    <option value="default">Default</option>
+    <option value="room1">Room 1</option>
+    <option value="room2">Room 2</option>
+    <option value="room3">Room 3</option>
+    <option value="room4">Room 4</option>
+    <option value="room5">Room 5</option>
+  </select>
+  <span class="roomBadge" id="roomBadge">#default</span>
+</div>
+
 <div id="status"><span class="dot"></span><span id="statusText">Connecting…</span></div>
 
 <div id="viewport">
@@ -396,73 +468,208 @@ import {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
-const notesRef = ref(db, 'notes');
-const presenceRootRef = ref(db, 'presence');
 
 const statusEl = document.getElementById('status');
 const statusText = document.getElementById('statusText');
-
-// God Mode state
-let isGodMode = false;
-let statusClicks = 0;
-let statusClickTimer = null;
-
-statusEl.addEventListener('click', () => {
-  statusClicks++;
-  clearTimeout(statusClickTimer);
-  
-  if (statusClicks >= 5) {
-    statusClicks = 0; // Reset counter
-    if (!isGodMode) {
-      const pwd = prompt('Enter Admin Password:');
-      if (pwd === 'Passw0rd') {
-        isGodMode = true;
-        alert('God Mode Enabled: You can now delete any note.');
-        // Re-render all notes to reveal the delete buttons
-        Object.keys(notesById).forEach(id => refreshOwnership(id));
-      } else if (pwd !== null) {
-        alert('Incorrect password.');
-      }
-    } else {
-      isGodMode = false;
-      alert('God Mode Disabled.');
-      // Re-render all notes to hide the delete buttons
-      Object.keys(notesById).forEach(id => refreshOwnership(id));
-    }
-  } else {
-    // Reset clicks if they don't click 5 times within 1.5 seconds
-    statusClickTimer = setTimeout(() => { statusClicks = 0; }, 1500);
-  }
-});
+const roomSelect = document.getElementById('roomSelect');
+const roomBadge = document.getElementById('roomBadge');
 
 let uid = null;
+let currentRoom = 'default';
+let notesRef = null;
+let presenceRootRef = null;
+let activeListeners = { notes: null, presence: null };
+
+// ---------- Room management ----------
+function getRoomNotesRef(room) {
+  return ref(db, `rooms/${room}/notes`);
+}
+
+function getRoomPresenceRef(room) {
+  return ref(db, `rooms/${room}/presence`);
+}
+
+function switchRoom(room) {
+  // Detach old listeners
+  if (activeListeners.notes) {
+    activeListeners.notes();
+    activeListeners.notes = null;
+  }
+  if (activeListeners.presence) {
+    activeListeners.presence();
+    activeListeners.presence = null;
+  }
+
+  // Clear current notes
+  Object.keys(elsById).forEach(id => {
+    const el = elsById[id];
+    if (el) el.remove();
+    delete elsById[id];
+    delete notesById[id];
+  });
+  updateEmptyState();
+
+  currentRoom = room;
+  notesRef = getRoomNotesRef(room);
+  presenceRootRef = getRoomPresenceRef(room);
+
+  // Update UI
+  roomBadge.textContent = '#' + room;
+  document.title = `Corkboard — ${room}`;
+  
+  // Save room preference
+  localStorage.setItem('corkboard-room', room);
+  
+  // Update URL hash without triggering a reload
+  if (room === 'default') {
+    history.replaceState(null, '', window.location.pathname);
+  } else {
+    history.replaceState(null, '', `#${room}`);
+  }
+
+  // Attach listeners if authenticated
+  if (uid) {
+    attachListeners();
+    attachPresence();
+  }
+}
+
+function attachListeners() {
+  if (!notesRef) return;
+  
+  // Detach old if any
+  if (activeListeners.notes) {
+    activeListeners.notes();
+    activeListeners.notes = null;
+  }
+
+  // Attach new listeners
+  const unsubNotesAdded = onChildAdded(notesRef, (snap)=>{
+    const id = snap.key;
+    const n = snap.val() || {};
+    notesById[id] = n;
+    if(!elsById[id]){
+      const el = buildNoteEl(id, n);
+      elsById[id] = el;
+      world.appendChild(el);
+    }
+    updateEmptyState();
+  });
+
+  const unsubNotesChanged = onChildChanged(notesRef, (snap)=>{
+    const id = snap.key;
+    const n = snap.val() || {};
+    notesById[id] = n;
+    const el = elsById[id];
+    if(!el) return;
+    const owner = isOwner(n);
+
+    if(el.classList.contains('dragging')) return;
+    applyPosition(el, n);
+    applyColor(el, n);
+    applyBorderStyle(el, n);
+    renderStickers(el, n, id, owner);
+
+    const textEl = el.querySelector('.text');
+    if(textEl && document.activeElement !== textEl && textEl.textContent !== (n.text || '')){
+      textEl.textContent = n.text || '';
+    }
+  });
+
+  const unsubNotesRemoved = onChildRemoved(notesRef, (snap)=>{
+    const id = snap.key;
+    delete notesById[id];
+    const el = elsById[id];
+    if(el){ el.remove(); delete elsById[id]; }
+    updateEmptyState();
+  });
+
+  activeListeners.notes = () => {
+    unsubNotesAdded();
+    unsubNotesChanged();
+    unsubNotesRemoved();
+  };
+}
+
+function attachPresence() {
+  if (!uid || !presenceRootRef) return;
+  
+  if (activeListeners.presence) {
+    activeListeners.presence();
+    activeListeners.presence = null;
+  }
+
+  const myPresenceRef = ref(db, `rooms/${currentRoom}/presence/${uid}`);
+  
+  // Connection status
+  const unsubConn = onValue(ref(db, '.info/connected'), (snap)=>{
+    if(snap.val() === true){
+      set(myPresenceRef, true);
+      onDisconnect(myPresenceRef).remove();
+      statusEl.className = 'connected';
+    } else {
+      statusEl.className = '';
+      statusText.textContent = 'Reconnecting…';
+    }
+  });
+
+  // Online count
+  const unsubPresence = onValue(presenceRootRef, (snap)=>{
+    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+    statusText.textContent = count <= 1 ? 'You' : count + ' online';
+  });
+
+  activeListeners.presence = () => {
+    unsubConn();
+    unsubPresence();
+  };
+}
+
+// ---------- Auth ----------
 signInAnonymously(auth).catch(err=>{
   statusEl.className = 'error';
   statusText.textContent = 'Sign-in failed';
   console.error(err);
 });
+
 onAuthStateChanged(auth, (user)=>{
   if(user){
     uid = user.uid;
-    const myPresenceRef = ref(db, 'presence/' + uid);
-    onValue(ref(db, '.info/connected'), (snap)=>{
-      if(snap.val() === true){
-        set(myPresenceRef, true);
-        onDisconnect(myPresenceRef).remove();
-        statusEl.className = 'connected';
-      } else {
-        statusEl.className = '';
-        statusText.textContent = 'Reconnecting…';
-      }
-    });
-    // attach this only once we're authenticated, or the rules reject the read
-    onValue(presenceRootRef, (snap)=>{
-      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-      statusText.textContent = count <= 1 ? 'You' : count + ' online';
-    });
-    // notes render as read-only until we know who "we" are; once auth
-    // resolves, re-stamp ownership on anything already drawn.
-    Object.keys(elsById).forEach(id => refreshOwnership(id));
+    // Check for room in URL hash or localStorage
+    const hash = window.location.hash.slice(1);
+    const savedRoom = localStorage.getItem('corkboard-room');
+    let room = 'default';
+    
+    if (hash && hash.length > 0) {
+      room = hash;
+    } else if (savedRoom) {
+      room = savedRoom;
+    }
+    
+    // Set select value
+    if (roomSelect.querySelector(`option[value="${room}"]`)) {
+      roomSelect.value = room;
+    } else {
+      room = 'default';
+      roomSelect.value = 'default';
+    }
+    
+    switchRoom(room);
+  }
+});
+
+// ---------- Room selector ----------
+roomSelect.addEventListener('change', () => {
+  const room = roomSelect.value;
+  switchRoom(room);
+});
+
+// Handle URL hash changes
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash.slice(1);
+  if (hash && hash.length > 0 && roomSelect.querySelector(`option[value="${hash}"]`)) {
+    roomSelect.value = hash;
+    switchRoom(hash);
   }
 });
 
@@ -471,10 +678,10 @@ const viewport = document.getElementById('viewport');
 const world = document.getElementById('world');
 const empty = document.getElementById('empty');
 const zoomLabel = document.getElementById('zoomLabel');
-const VIEW_KEY = 'corkboard-view-v1'; // camera is local-only, not synced
+const VIEW_KEY = 'corkboard-view-v1';
 
-const notesById = {};   // id -> note data (schema below, always read defensively)
-const elsById = {};     // id -> DOM element
+const notesById = {};
+const elsById = {};
 let activeColor = 'yellow';
 let cam = { x: 0, y: 0, scale: 1 };
 let openPopover = null;
@@ -485,7 +692,6 @@ const BORDER_STYLES = ['none','thin','thick','dashed'];
 const BORDER_COLORS = ['#2c2013','#ffffff','#e8a33d','#e0574a','#3b5bdb'];
 const EMOJI_PRESETS = ['⭐','❤️','🔥','✅','📌','💡','🎉','👍','⚠️','📎','🌟','☕','🐛','🚀','🎯','😀'];
 
-// local camera persists per-browser only
 try{
   const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
   if(saved) cam = saved;
@@ -496,10 +702,6 @@ function saveCamera(){
 }
 
 // ---------- defensive schema readers ----------
-// Every getter below tolerates missing/unknown fields so that a future
-// UI/UX update (new fields, renamed options, etc.) never breaks notes
-// that were written by an older version of this app, and so older
-// deployed clients don't choke on notes written by a newer version.
 function noteColor(n){ return COLORS.includes(n && n.color) ? n.color : 'yellow'; }
 function noteBorder(n){
   const b = (n && n.border) || {};
@@ -606,14 +808,12 @@ function renderStickers(el, n, id, owner){
         rm.addEventListener('pointerdown', e=> e.stopPropagation());
         rm.addEventListener('click', (e)=>{
           e.stopPropagation();
-          remove(ref(db, `notes/${id}/stickers/${sid}`));
+          remove(ref(db, `rooms/${currentRoom}/notes/${id}/stickers/${sid}`));
         });
         sEl.appendChild(rm);
         sEl.addEventListener('pointerdown', (e)=> startDragSticker(e, id, sid, sEl, el));
       }
     }
-    // keep the emoji glyph itself in its own text node so it doesn't
-    // clobber the remove button that may already be inside sEl
     let glyph = sEl.querySelector('.glyph');
     if(!glyph){
       glyph = document.createElement('span');
@@ -626,7 +826,6 @@ function renderStickers(el, n, id, owner){
       sEl.style.top = y + '%';
     }
   });
-  // drop any stickers that were removed remotely
   layer.querySelectorAll('.sticker').forEach(sEl=>{
     if(!seen.has(sEl.dataset.sid)) sEl.remove();
   });
@@ -636,12 +835,7 @@ function refreshOwnership(id){
   const n = notesById[id];
   const el = elsById[id];
   if(!n || !el) return;
-  
-  const owner = isOwner(n);
-  const currentGodModeState = el.dataset.godMode === '1';
-
-  // Rebuild if it's an owner note that hasn't initialized, OR if the God Mode state changed
-  if( (owner && !el.dataset.ownerReady) || (!owner && currentGodModeState !== isGodMode) ){
+  if(isOwner(n) && !el.dataset.ownerReady){
     const rebuilt = buildNoteEl(id, n);
     el.replaceWith(rebuilt);
     elsById[id] = rebuilt;
@@ -653,13 +847,7 @@ function buildNoteEl(id, n){
   const owner = isOwner(n);
   el.className = 'note' + (owner ? '' : ' readonly');
   el.dataset.id = id;
-  
-  if(owner){
-    el.dataset.ownerReady = '1';
-  } else if (isGodMode) {
-    el.dataset.godMode = '1'; // Track God Mode render state
-  }
-
+  if(owner) el.dataset.ownerReady = '1';
   applyPosition(el, n);
   applyColor(el, n);
   applyBorderStyle(el, n);
@@ -676,12 +864,12 @@ function buildNoteEl(id, n){
     text.addEventListener('input', ()=>{
       clearTimeout(typingTimer);
       typingTimer = setTimeout(()=>{
-        update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
+        update(ref(db, `rooms/${currentRoom}/notes/${id}`), { text: text.textContent, updatedAt: Date.now() });
       }, 400);
     });
     text.addEventListener('blur', ()=>{
       clearTimeout(typingTimer);
-      update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
+      update(ref(db, `rooms/${currentRoom}/notes/${id}`), { text: text.textContent, updatedAt: Date.now() });
     });
   }
 
@@ -705,30 +893,11 @@ function buildNoteEl(id, n){
     el.appendChild(btn);
     el.appendChild(pop);
   } else {
-    // ---- GOD MODE LOGIC INJECTED HERE ----
-    if (isGodMode) {
-      const delBtn = document.createElement('button');
-      delBtn.className = 'customizeBtn'; // Reuses your existing CSS styles
-      delBtn.textContent = '🗑️';
-      delBtn.title = 'God Mode: Delete Note';
-      delBtn.style.color = '#e0574a';
-      delBtn.style.opacity = '0.8';
-      
-      delBtn.addEventListener('pointerdown', e => e.stopPropagation());
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if(confirm('God Mode: Permanently delete this note?')) {
-          remove(ref(db, 'notes/' + id));
-        }
-      });
-      el.appendChild(delBtn);
-    } else {
-      const tag = document.createElement('div');
-      tag.className = 'ownerTag';
-      tag.textContent = '🔒';
-      tag.title = 'Placed by another user';
-      el.appendChild(tag);
-    }
+    const tag = document.createElement('div');
+    tag.className = 'ownerTag';
+    tag.textContent = '🔒';
+    tag.title = 'Placed by another user';
+    el.appendChild(tag);
   }
 
   renderStickers(el, n, id, owner);
@@ -746,7 +915,6 @@ function buildPopover(id, noteEl){
   pop.addEventListener('pointerdown', e => e.stopPropagation());
   pop.addEventListener('click', e => e.stopPropagation());
 
-  // default position: to the right of the note, clear of the text area
   pop.style.left = (NOTE_W + 12) + 'px';
   pop.style.top = '0px';
 
@@ -772,7 +940,6 @@ function buildPopover(id, noteEl){
   pop.appendChild(header);
   makePopoverDraggable(pop, header);
 
-  // color
   const colorSection = document.createElement('section');
   const colorLabel = document.createElement('label');
   colorLabel.textContent = 'Color';
@@ -787,13 +954,12 @@ function buildPopover(id, noteEl){
     sw.addEventListener('click', ()=>{
       colorRow.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
       sw.classList.add('active');
-      update(ref(db, 'notes/' + id), { color: c, updatedAt: Date.now() });
+      update(ref(db, `rooms/${currentRoom}/notes/${id}`), { color: c, updatedAt: Date.now() });
     });
     colorRow.appendChild(sw);
   });
   colorSection.append(colorLabel, colorRow);
 
-  // border
   const borderSection = document.createElement('section');
   const borderLabel = document.createElement('label');
   borderLabel.textContent = 'Border';
@@ -810,7 +976,7 @@ function buildPopover(id, noteEl){
       styleRow.querySelectorAll('.bstyle').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
       const current = noteBorder(notesById[id]);
-      update(ref(db, 'notes/' + id + '/border'), { style: st, color: current.color });
+      update(ref(db, `rooms/${currentRoom}/notes/${id}/border`), { style: st, color: current.color });
     });
     styleRow.appendChild(b);
   });
@@ -827,14 +993,13 @@ function buildPopover(id, noteEl){
       dot.classList.add('active');
       const current = noteBorder(notesById[id]);
       const style = current.style === 'none' ? 'thin' : current.style;
-      update(ref(db, 'notes/' + id + '/border'), { style, color: hex });
+      update(ref(db, `rooms/${currentRoom}/notes/${id}/border`), { style, color: hex });
       styleRow.querySelectorAll('.bstyle').forEach(x=> x.classList.toggle('active', x.dataset.style === style));
     });
     colorDotRow.appendChild(dot);
   });
   borderSection.append(borderLabel, styleRow, colorDotRow);
 
-  // stickers
   const stickerSection = document.createElement('section');
   const stickerLabel = document.createElement('label');
   stickerLabel.textContent = 'Stickers — pick or type any emoji';
@@ -873,56 +1038,11 @@ function addSticker(noteId, emoji){
   const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const jitterX = 40 + Math.random() * 20;
   const jitterY = 40 + Math.random() * 20;
-  set(ref(db, `notes/${noteId}/stickers/${sid}`), { emoji, x: jitterX, y: jitterY });
+  set(ref(db, `rooms/${currentRoom}/notes/${noteId}/stickers/${sid}`), { emoji, x: jitterX, y: jitterY });
 }
 
 document.addEventListener('click', ()=>{
   if(openPopover){ openPopover.classList.remove('open'); openPopover = null; }
-});
-
-// ---------- firebase listeners: keep local state + DOM in sync ----------
-onChildAdded(notesRef, (snap)=>{
-  const id = snap.key;
-  const n = snap.val() || {};
-  notesById[id] = n;
-  if(!elsById[id]){
-    const el = buildNoteEl(id, n);
-    elsById[id] = el;
-    world.appendChild(el);
-  }
-  updateEmptyState();
-});
-
-onChildChanged(notesRef, (snap)=>{
-  const id = snap.key;
-  const n = snap.val() || {};
-  notesById[id] = n;
-  const el = elsById[id];
-  if(!el) return;
-  const owner = isOwner(n);
-
-  // don't let a remote echo fight a drag or a keystroke happening right now
-  if(el.classList.contains('dragging')) return;
-  applyPosition(el, n);
-  applyColor(el, n);
-  applyBorderStyle(el, n);
-  renderStickers(el, n, id, owner);
-
-  const textEl = el.querySelector('.text');
-  if(textEl && document.activeElement !== textEl && textEl.textContent !== (n.text || '')){
-    textEl.textContent = n.text || '';
-  }
-});
-
-onChildRemoved(notesRef, (snap)=>{
-  // Notes are permanent by design (removal is blocked in the database
-  // rules), but this listener is kept so the UI stays correct if a note
-  // is ever removed directly from the Firebase console.
-  const id = snap.key;
-  delete notesById[id];
-  const el = elsById[id];
-  if(el){ el.remove(); delete elsById[id]; }
-  updateEmptyState();
 });
 
 // ---------- camera ----------
@@ -981,7 +1101,7 @@ window.addEventListener('pointerup', ()=>{
   if(panState){ panState = null; viewport.classList.remove('panning'); saveCamera(); }
 });
 
-// ---------- note dragging (owner only, throttled writes to Firebase) ----------
+// ---------- note dragging ----------
 let dragState = null;
 const DRAG_SYNC_MS = 70;
 
@@ -999,7 +1119,7 @@ function startDragNote(e, id, el){
     origX: n.x || 0, origY: n.y || 0,
     lastSync: 0
   };
-  update(ref(db, 'notes/' + id), { updatedAt: Date.now() }); // bring to front for everyone
+  update(ref(db, `rooms/${currentRoom}/notes/${id}`), { updatedAt: Date.now() });
   el.setPointerCapture(e.pointerId);
 }
 
@@ -1024,7 +1144,7 @@ viewport.addEventListener('pointermove', (e)=>{
   const now = Date.now();
   if(now - dragState.lastSync > DRAG_SYNC_MS){
     dragState.lastSync = now;
-    update(ref(db, 'notes/' + dragState.id), { x: n.x, y: n.y });
+    update(ref(db, `rooms/${currentRoom}/notes/${dragState.id}`), { x: n.x, y: n.y });
   }
 });
 
@@ -1033,11 +1153,11 @@ window.addEventListener('pointerup', ()=>{
   const id = dragState.id;
   const n = notesById[id];
   dragState.el.classList.remove('dragging');
-  update(ref(db, 'notes/' + id), { x: n.x, y: n.y, updatedAt: Date.now() });
+  update(ref(db, `rooms/${currentRoom}/notes/${id}`), { x: n.x, y: n.y, updatedAt: Date.now() });
   dragState = null;
 });
 
-// ---------- sticker dragging (confined to the note, owner only) ----------
+// ---------- sticker dragging ----------
 let stickerDrag = null;
 
 function startDragSticker(e, noteId, sid, sEl, noteEl){
@@ -1064,12 +1184,12 @@ window.addEventListener('pointerup', ()=>{
   const { noteId, sid, sEl, _x, _y } = stickerDrag;
   delete sEl.dataset.dragging;
   if(typeof _x === 'number'){
-    update(ref(db, `notes/${noteId}/stickers/${sid}`), { x: _x, y: _y });
+    update(ref(db, `rooms/${currentRoom}/notes/${noteId}/stickers/${sid}`), { x: _x, y: _y });
   }
   stickerDrag = null;
 });
 
-// ---------- popover dragging (local-only positioning, not synced) ----------
+// ---------- popover dragging ----------
 let popoverDrag = null;
 
 function makePopoverDraggable(pop, header){
@@ -1089,16 +1209,8 @@ window.addEventListener('pointermove', (e)=>{
   if(!popoverDrag) return;
   const dx = (e.clientX - popoverDrag.startX) / cam.scale;
   const dy = (e.clientY - popoverDrag.startY) / cam.scale;
-  
-  let newLeft = popoverDrag.origLeft + dx;
-  let newTop = popoverDrag.origTop + dy;
-
-  // Constrain the popover's position relative to the note.
-  newLeft = Math.max(-280, Math.min(480, newLeft));
-  newTop = Math.max(-300, Math.min(350, newTop));
-
-  popoverDrag.pop.style.left = newLeft + 'px';
-  popoverDrag.pop.style.top = newTop + 'px';
+  popoverDrag.pop.style.left = (popoverDrag.origLeft + dx) + 'px';
+  popoverDrag.pop.style.top = (popoverDrag.origTop + dy) + 'px';
 });
 
 window.addEventListener('pointerup', ()=>{
@@ -1107,7 +1219,7 @@ window.addEventListener('pointerup', ()=>{
 
 // ---------- adding notes ----------
 document.getElementById('addBtn').addEventListener('click', ()=>{
-  if(!uid){ return; } // still signing in — the click is ignored rather than writing an ownerless note
+  if(!uid){ return; }
   const center = screenToWorld(innerWidth/2, innerHeight/2);
   const desiredX = center.x - NOTE_W/2;
   const desiredY = center.y - NOTE_H/2;
@@ -1134,7 +1246,7 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
   });
 });
 
-// ---------- color swatches (sets the color new notes are created with) ----------
+// ---------- color swatches ----------
 document.querySelectorAll('#toolbar .swatch').forEach(sw=>{
   sw.addEventListener('click', ()=>{
     document.querySelectorAll('#toolbar .swatch').forEach(s=>s.classList.remove('active'));
