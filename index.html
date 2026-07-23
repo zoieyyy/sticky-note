@@ -71,7 +71,9 @@
     touch-action:none;
     outline: 2px solid transparent;
     outline-offset: 3px;
+    border: 3px solid transparent;
   }
+  .note.readonly{ cursor: default; }
   .note.dragging{
     box-shadow: 0 22px 34px -8px rgba(0,0,0,0.65), 0 6px 10px rgba(0,0,0,0.4);
     cursor: grabbing;
@@ -121,20 +123,111 @@
     content: attr(data-placeholder);
     opacity:0.45;
   }
+  .note.readonly .text{ cursor: default; }
 
-  .note .del{
-    position:absolute; top:6px; right:8px;
-    width:20px; height:20px;
+  /* ---- owner customize button + popover ---- */
+  .note .customizeBtn{
+    position:absolute; top:5px; right:7px;
+    width:22px; height:22px;
     border:none; border-radius:50%;
     background: rgba(0,0,0,0.12);
     color: var(--ink);
-    font-size:13px; line-height:20px; text-align:center;
+    font-size:13px; line-height:22px; text-align:center;
     cursor:pointer;
     opacity:0; transition: opacity .15s ease, background .15s ease;
-    z-index:2;
+    z-index:5;
   }
-  .note:hover .del{ opacity:0.75; }
-  .note .del:hover{ background: rgba(0,0,0,0.25); opacity:1 !important; }
+  .note:hover .customizeBtn, .note .customizeBtn.open{ opacity:0.8; }
+  .note .customizeBtn:hover{ background: rgba(0,0,0,0.25); opacity:1 !important; }
+
+  .note .ownerTag{
+    position:absolute; top:6px; left:9px;
+    font-size:10px; color: rgba(44,32,19,0.4);
+    z-index:1; pointer-events:none;
+  }
+
+  .popover{
+    position:absolute; top:30px; right:0;
+    width:212px;
+    background: var(--ui-bg);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px;
+    padding:12px;
+    box-shadow: 0 16px 34px rgba(0,0,0,0.55);
+    z-index:1000000;
+    display:none;
+    cursor:default;
+    touch-action:auto;
+  }
+  .popover.open{ display:block; }
+  .popover section{ margin-bottom:10px; }
+  .popover section:last-child{ margin-bottom:0; }
+  .popover label{
+    display:block; font-size:10.5px; letter-spacing:.04em; text-transform:uppercase;
+    color: var(--ui-text-dim); margin-bottom:6px;
+  }
+  .popover .row{ display:flex; flex-wrap:wrap; gap:6px; }
+  .popover .swatch{
+    width:22px; height:22px; border-radius:6px;
+    border:2px solid transparent; cursor:pointer;
+  }
+  .popover .swatch.active{ border-color: var(--accent); }
+  .popover .bstyle{
+    flex:1; min-width:40px; padding:5px 0;
+    border-radius:7px; border:1px solid rgba(255,255,255,0.15);
+    background: var(--ui-bg-2); color: var(--ui-text);
+    font-size:11px; cursor:pointer;
+  }
+  .popover .bstyle.active{ border-color: var(--accent); color: var(--accent); }
+  .popover .bcolor{
+    width:18px; height:18px; border-radius:50%;
+    border:2px solid rgba(255,255,255,0.25); cursor:pointer;
+  }
+  .popover .bcolor.active{ border-color: var(--accent); }
+  .popover .emojiRow{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+  .popover .emojiBtn{
+    width:26px; height:26px; border-radius:6px; border:none;
+    background: var(--ui-bg-2); font-size:15px; cursor:pointer; line-height:26px;
+    text-align:center; padding:0;
+  }
+  .popover .emojiBtn:hover{ background:#3a2818; }
+  .popover .customEmoji{ display:flex; gap:6px; }
+  .popover .customEmoji input{
+    flex:1; min-width:0; border-radius:7px; border:1px solid rgba(255,255,255,0.15);
+    background: var(--ui-bg-2); color: var(--ui-text); padding:5px 7px; font-size:14px;
+  }
+  .popover .customEmoji button{
+    border:none; border-radius:7px; background: var(--accent); color:#2b1a05;
+    font-size:12px; font-weight:600; padding:0 10px; cursor:pointer;
+  }
+
+  /* ---- stickers ---- */
+  .stickerLayer{
+    position:absolute; inset:0;
+    pointer-events:none;
+    z-index:3;
+  }
+  .sticker{
+    position:absolute;
+    transform: translate(-50%,-50%);
+    font-size:26px;
+    line-height:1;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35));
+  }
+  .sticker.owned{
+    pointer-events:auto;
+    cursor:grab;
+  }
+  .sticker.owned:active{ cursor:grabbing; }
+  .sticker .rm{
+    position:absolute; top:-9px; right:-9px;
+    width:15px; height:15px; border-radius:50%;
+    background: rgba(0,0,0,0.55); color:#fff;
+    font-size:9px; line-height:15px; text-align:center;
+    opacity:0; transition:opacity .12s ease;
+    pointer-events:auto; cursor:pointer;
+  }
+  .sticker:hover .rm{ opacity:1; }
 
   /* Toolbar */
   #toolbar{
@@ -310,6 +403,9 @@ onAuthStateChanged(auth, (user)=>{
       const count = snap.exists() ? Object.keys(snap.val()).length : 0;
       statusText.textContent = count <= 1 ? 'You' : count + ' online';
     });
+    // notes render as read-only until we know who "we" are; once auth
+    // resolves, re-stamp ownership on anything already drawn.
+    Object.keys(elsById).forEach(id => refreshOwnership(id));
   }
 });
 
@@ -320,10 +416,17 @@ const empty = document.getElementById('empty');
 const zoomLabel = document.getElementById('zoomLabel');
 const VIEW_KEY = 'corkboard-view-v1'; // camera is local-only, not synced
 
-const notesById = {};   // id -> note data {x,y,text,color,rot,updatedAt}
+const notesById = {};   // id -> note data (schema below, always read defensively)
 const elsById = {};     // id -> DOM element
 let activeColor = 'yellow';
 let cam = { x: 0, y: 0, scale: 1 };
+let openPopover = null;
+
+const COLORS = ['yellow','pink','mint','blue','lilac'];
+const COLOR_HEX = { yellow:'#f6dd6b', pink:'#f3a6c1', mint:'#a3ddc2', blue:'#9bc9ef', lilac:'#c8aee9' };
+const BORDER_STYLES = ['none','thin','thick','dashed'];
+const BORDER_COLORS = ['#2c2013','#ffffff','#e8a33d','#e0574a','#3b5bdb'];
+const EMOJI_PRESETS = ['⭐','❤️','🔥','✅','📌','💡','🎉','👍','⚠️','📎','🌟','☕','🐛','🚀','🎯','😀'];
 
 // local camera persists per-browser only
 try{
@@ -333,6 +436,26 @@ try{
 
 function saveCamera(){
   localStorage.setItem(VIEW_KEY, JSON.stringify(cam));
+}
+
+// ---------- defensive schema readers ----------
+// Every getter below tolerates missing/unknown fields so that a future
+// UI/UX update (new fields, renamed options, etc.) never breaks notes
+// that were written by an older version of this app, and so older
+// deployed clients don't choke on notes written by a newer version.
+function noteColor(n){ return COLORS.includes(n && n.color) ? n.color : 'yellow'; }
+function noteBorder(n){
+  const b = (n && n.border) || {};
+  const style = BORDER_STYLES.includes(b.style) ? b.style : 'none';
+  const color = (typeof b.color === 'string' && b.color) ? b.color : BORDER_COLORS[0];
+  return { style, color };
+}
+function noteStickers(n){
+  const s = (n && n.stickers) || {};
+  return (s && typeof s === 'object') ? s : {};
+}
+function isOwner(n){
+  return !!(uid && n && n.ownerId === uid);
 }
 
 // ---------- collision ----------
@@ -346,7 +469,7 @@ function collidesAt(excludeId, x, y){
   for(const id in notesById){
     if(id === excludeId) continue;
     const o = notesById[id];
-    if(rectsOverlap(x, y, o.x, o.y)) return true;
+    if(rectsOverlap(x, y, o.x || 0, o.y || 0)) return true;
   }
   return false;
 }
@@ -372,58 +495,283 @@ function updateEmptyState(){
 }
 
 function applyPosition(el, n){
-  el.style.left = n.x + 'px';
-  el.style.top = n.y + 'px';
-  el.style.transform = `rotate(${n.rot}deg)`;
+  el.style.left = (n.x || 0) + 'px';
+  el.style.top = (n.y || 0) + 'px';
+  el.style.transform = `rotate(${n.rot || 0}deg)`;
   el.style.zIndex = n.updatedAt || 1;
+}
+
+function applyColor(el, n){
+  const c = noteColor(n);
+  if(el.dataset.color !== c) el.dataset.color = c;
+}
+
+function applyBorderStyle(el, n){
+  const b = noteBorder(n);
+  if(b.style === 'none'){
+    el.style.borderStyle = 'solid';
+    el.style.borderColor = 'transparent';
+    el.style.borderWidth = '3px';
+    return;
+  }
+  const widths = { thin:'3px', thick:'6px', dashed:'3px' };
+  const cssStyle = b.style === 'dashed' ? 'dashed' : 'solid';
+  el.style.borderWidth = widths[b.style] || '3px';
+  el.style.borderStyle = cssStyle;
+  el.style.borderColor = b.color;
+}
+
+function renderStickers(el, n, id, owner){
+  let layer = el.querySelector('.stickerLayer');
+  if(!layer){
+    layer = document.createElement('div');
+    layer.className = 'stickerLayer';
+    el.appendChild(layer);
+  }
+  const stickers = noteStickers(n);
+  const seen = new Set();
+  Object.keys(stickers).forEach(sid=>{
+    seen.add(sid);
+    const s = stickers[sid] || {};
+    const emoji = typeof s.emoji === 'string' && s.emoji ? s.emoji : '⭐';
+    const x = (typeof s.x === 'number') ? s.x : 50;
+    const y = (typeof s.y === 'number') ? s.y : 50;
+    let sEl = layer.querySelector(`[data-sid="${sid}"]`);
+    if(!sEl){
+      sEl = document.createElement('div');
+      sEl.className = 'sticker' + (owner ? ' owned' : '');
+      sEl.dataset.sid = sid;
+      layer.appendChild(sEl);
+      if(owner){
+        const rm = document.createElement('span');
+        rm.className = 'rm';
+        rm.textContent = '✕';
+        rm.addEventListener('pointerdown', e=> e.stopPropagation());
+        rm.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          remove(ref(db, `notes/${id}/stickers/${sid}`));
+        });
+        sEl.appendChild(rm);
+        sEl.addEventListener('pointerdown', (e)=> startDragSticker(e, id, sid, sEl, el));
+      }
+    }
+    // keep the emoji glyph itself in its own text node so it doesn't
+    // clobber the remove button that may already be inside sEl
+    let glyph = sEl.querySelector('.glyph');
+    if(!glyph){
+      glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      sEl.insertBefore(glyph, sEl.firstChild);
+    }
+    if(glyph.textContent !== emoji) glyph.textContent = emoji;
+    if(!sEl.dataset.dragging){
+      sEl.style.left = x + '%';
+      sEl.style.top = y + '%';
+    }
+  });
+  // drop any stickers that were removed remotely
+  layer.querySelectorAll('.sticker').forEach(sEl=>{
+    if(!seen.has(sEl.dataset.sid)) sEl.remove();
+  });
+}
+
+function refreshOwnership(id){
+  // called once auth resolves after a note was already drawn read-only
+  const n = notesById[id];
+  const el = elsById[id];
+  if(!n || !el) return;
+  if(isOwner(n) && !el.dataset.ownerReady){
+    const rebuilt = buildNoteEl(id, n);
+    el.replaceWith(rebuilt);
+    elsById[id] = rebuilt;
+  }
 }
 
 function buildNoteEl(id, n){
   const el = document.createElement('div');
-  el.className = 'note';
+  const owner = isOwner(n);
+  el.className = 'note' + (owner ? '' : ' readonly');
   el.dataset.id = id;
-  el.dataset.color = n.color;
+  if(owner) el.dataset.ownerReady = '1';
   applyPosition(el, n);
-
-  const del = document.createElement('button');
-  del.className = 'del';
-  del.textContent = '✕';
-  del.addEventListener('pointerdown', e => e.stopPropagation());
-  del.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    remove(ref(db, 'notes/' + id));
-  });
+  applyColor(el, n);
+  applyBorderStyle(el, n);
 
   const text = document.createElement('div');
   text.className = 'text';
-  text.contentEditable = 'true';
-  text.dataset.placeholder = 'Type something…';
+  text.contentEditable = owner ? 'true' : 'false';
+  text.dataset.placeholder = owner ? 'Type something…' : '';
   text.textContent = n.text || '';
   text.addEventListener('pointerdown', e => e.stopPropagation());
 
-  let typingTimer = null;
-  text.addEventListener('input', ()=>{
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(()=>{
+  if(owner){
+    let typingTimer = null;
+    text.addEventListener('input', ()=>{
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(()=>{
+        update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
+      }, 400);
+    });
+    text.addEventListener('blur', ()=>{
+      clearTimeout(typingTimer);
       update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
-    }, 400);
-  });
-  text.addEventListener('blur', ()=>{
-    clearTimeout(typingTimer);
-    update(ref(db, 'notes/' + id), { text: text.textContent, updatedAt: Date.now() });
-  });
+    });
+  }
 
-  el.appendChild(del);
   el.appendChild(text);
-  el.addEventListener('pointerdown', (ev)=> startDragNote(ev, id, el));
+
+  if(owner){
+    const btn = document.createElement('button');
+    btn.className = 'customizeBtn';
+    btn.textContent = '⚙';
+    btn.title = 'Customize';
+    btn.addEventListener('pointerdown', e=> e.stopPropagation());
+    const pop = buildPopover(id);
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const willOpen = !pop.classList.contains('open');
+      if(openPopover && openPopover !== pop){ openPopover.classList.remove('open'); }
+      pop.classList.toggle('open', willOpen);
+      btn.classList.toggle('open', willOpen);
+      openPopover = willOpen ? pop : null;
+    });
+    el.appendChild(btn);
+    el.appendChild(pop);
+  } else {
+    const tag = document.createElement('div');
+    tag.className = 'ownerTag';
+    tag.textContent = '🔒';
+    tag.title = 'Placed by another user';
+    el.appendChild(tag);
+  }
+
+  renderStickers(el, n, id, owner);
+
+  if(owner){
+    el.addEventListener('pointerdown', (ev)=> startDragNote(ev, id, el));
+  }
 
   return el;
 }
 
+function buildPopover(id){
+  const pop = document.createElement('div');
+  pop.className = 'popover';
+  pop.addEventListener('pointerdown', e => e.stopPropagation());
+  pop.addEventListener('click', e => e.stopPropagation());
+
+  // color
+  const colorSection = document.createElement('section');
+  const colorLabel = document.createElement('label');
+  colorLabel.textContent = 'Color';
+  const colorRow = document.createElement('div');
+  colorRow.className = 'row';
+  COLORS.forEach(c=>{
+    const sw = document.createElement('button');
+    sw.className = 'swatch';
+    sw.style.background = COLOR_HEX[c];
+    sw.dataset.color = c;
+    if(noteColor(notesById[id]) === c) sw.classList.add('active');
+    sw.addEventListener('click', ()=>{
+      colorRow.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+      sw.classList.add('active');
+      update(ref(db, 'notes/' + id), { color: c, updatedAt: Date.now() });
+    });
+    colorRow.appendChild(sw);
+  });
+  colorSection.append(colorLabel, colorRow);
+
+  // border
+  const borderSection = document.createElement('section');
+  const borderLabel = document.createElement('label');
+  borderLabel.textContent = 'Border';
+  const styleRow = document.createElement('div');
+  styleRow.className = 'row';
+  const labels = { none:'None', thin:'Thin', thick:'Thick', dashed:'Dashed' };
+  BORDER_STYLES.forEach(st=>{
+    const b = document.createElement('button');
+    b.className = 'bstyle';
+    b.textContent = labels[st];
+    b.dataset.style = st;
+    if(noteBorder(notesById[id]).style === st) b.classList.add('active');
+    b.addEventListener('click', ()=>{
+      styleRow.querySelectorAll('.bstyle').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      const current = noteBorder(notesById[id]);
+      update(ref(db, 'notes/' + id + '/border'), { style: st, color: current.color });
+    });
+    styleRow.appendChild(b);
+  });
+  const colorDotRow = document.createElement('div');
+  colorDotRow.className = 'row';
+  colorDotRow.style.marginTop = '6px';
+  BORDER_COLORS.forEach(hex=>{
+    const dot = document.createElement('button');
+    dot.className = 'bcolor';
+    dot.style.background = hex;
+    if(noteBorder(notesById[id]).color === hex) dot.classList.add('active');
+    dot.addEventListener('click', ()=>{
+      colorDotRow.querySelectorAll('.bcolor').forEach(x=>x.classList.remove('active'));
+      dot.classList.add('active');
+      const current = noteBorder(notesById[id]);
+      const style = current.style === 'none' ? 'thin' : current.style;
+      update(ref(db, 'notes/' + id + '/border'), { style, color: hex });
+      styleRow.querySelectorAll('.bstyle').forEach(x=> x.classList.toggle('active', x.dataset.style === style));
+    });
+    colorDotRow.appendChild(dot);
+  });
+  borderSection.append(borderLabel, styleRow, colorDotRow);
+
+  // stickers
+  const stickerSection = document.createElement('section');
+  const stickerLabel = document.createElement('label');
+  stickerLabel.textContent = 'Stickers — pick or type any emoji';
+  const emojiRow = document.createElement('div');
+  emojiRow.className = 'emojiRow';
+  EMOJI_PRESETS.forEach(em=>{
+    const b = document.createElement('button');
+    b.className = 'emojiBtn';
+    b.textContent = em;
+    b.addEventListener('click', ()=> addSticker(id, em));
+    emojiRow.appendChild(b);
+  });
+  const customRow = document.createElement('div');
+  customRow.className = 'customEmoji';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 8;
+  input.placeholder = 'Paste any emoji…';
+  const addBtn2 = document.createElement('button');
+  addBtn2.textContent = 'Add';
+  addBtn2.addEventListener('click', ()=>{
+    const val = input.value.trim();
+    if(val){ addSticker(id, val); input.value = ''; }
+  });
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); addBtn2.click(); }
+  });
+  customRow.append(input, addBtn2);
+  stickerSection.append(stickerLabel, emojiRow, customRow);
+
+  pop.append(colorSection, borderSection, stickerSection);
+  return pop;
+}
+
+function addSticker(noteId, emoji){
+  const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const jitterX = 40 + Math.random() * 20;
+  const jitterY = 40 + Math.random() * 20;
+  set(ref(db, `notes/${noteId}/stickers/${sid}`), { emoji, x: jitterX, y: jitterY });
+}
+
+document.addEventListener('click', ()=>{
+  if(openPopover){ openPopover.classList.remove('open'); openPopover = null; }
+});
+
 // ---------- firebase listeners: keep local state + DOM in sync ----------
 onChildAdded(notesRef, (snap)=>{
   const id = snap.key;
-  const n = snap.val();
+  const n = snap.val() || {};
   notesById[id] = n;
   if(!elsById[id]){
     const el = buildNoteEl(id, n);
@@ -435,25 +783,29 @@ onChildAdded(notesRef, (snap)=>{
 
 onChildChanged(notesRef, (snap)=>{
   const id = snap.key;
-  const n = snap.val();
+  const n = snap.val() || {};
   notesById[id] = n;
   const el = elsById[id];
   if(!el) return;
+  const owner = isOwner(n);
 
   // don't let a remote echo fight a drag or a keystroke happening right now
   if(el.classList.contains('dragging')) return;
   applyPosition(el, n);
+  applyColor(el, n);
+  applyBorderStyle(el, n);
+  renderStickers(el, n, id, owner);
 
   const textEl = el.querySelector('.text');
-  if(document.activeElement !== textEl && textEl.textContent !== (n.text || '')){
+  if(textEl && document.activeElement !== textEl && textEl.textContent !== (n.text || '')){
     textEl.textContent = n.text || '';
-  }
-  if(el.dataset.color !== n.color){
-    el.dataset.color = n.color;
   }
 });
 
 onChildRemoved(notesRef, (snap)=>{
+  // Notes are permanent by design (removal is blocked in the database
+  // rules), but this listener is kept so the UI stays correct if a note
+  // is ever removed directly from the Firebase console.
   const id = snap.key;
   delete notesById[id];
   const el = elsById[id];
@@ -517,19 +869,22 @@ window.addEventListener('pointerup', ()=>{
   if(panState){ panState = null; viewport.classList.remove('panning'); saveCamera(); }
 });
 
-// ---------- note dragging (throttled writes to Firebase) ----------
+// ---------- note dragging (owner only, throttled writes to Firebase) ----------
 let dragState = null;
 const DRAG_SYNC_MS = 70;
 
 function startDragNote(e, id, el){
   e.stopPropagation();
   if(e.target.classList.contains('text')) return;
+  if(e.target.closest('.popover') || e.target.classList.contains('customizeBtn')) return;
+  if(e.target.closest('.sticker')) return;
   const n = notesById[id];
+  if(!isOwner(n)) return;
   el.classList.add('dragging');
   dragState = {
     id, el,
     startX: e.clientX, startY: e.clientY,
-    origX: n.x, origY: n.y,
+    origX: n.x || 0, origY: n.y || 0,
     lastSync: 0
   };
   update(ref(db, 'notes/' + id), { updatedAt: Date.now() }); // bring to front for everyone
@@ -570,33 +925,71 @@ window.addEventListener('pointerup', ()=>{
   dragState = null;
 });
 
+// ---------- sticker dragging (confined to the note, owner only) ----------
+let stickerDrag = null;
+
+function startDragSticker(e, noteId, sid, sEl, noteEl){
+  e.stopPropagation();
+  sEl.dataset.dragging = '1';
+  stickerDrag = { noteId, sid, sEl, noteEl };
+  sEl.setPointerCapture(e.pointerId);
+}
+
+viewport.addEventListener('pointermove', (e)=>{
+  if(!stickerDrag) return;
+  const rect = stickerDrag.noteEl.getBoundingClientRect();
+  let px = ((e.clientX - rect.left) / rect.width) * 100;
+  let py = ((e.clientY - rect.top) / rect.height) * 100;
+  px = Math.max(4, Math.min(96, px));
+  py = Math.max(4, Math.min(96, py));
+  stickerDrag.sEl.style.left = px + '%';
+  stickerDrag.sEl.style.top = py + '%';
+  stickerDrag._x = px; stickerDrag._y = py;
+});
+
+window.addEventListener('pointerup', ()=>{
+  if(!stickerDrag) return;
+  const { noteId, sid, sEl, _x, _y } = stickerDrag;
+  delete sEl.dataset.dragging;
+  if(typeof _x === 'number'){
+    update(ref(db, `notes/${noteId}/stickers/${sid}`), { x: _x, y: _y });
+  }
+  stickerDrag = null;
+});
+
 // ---------- adding notes ----------
 document.getElementById('addBtn').addEventListener('click', ()=>{
+  if(!uid){ return; } // still signing in — the click is ignored rather than writing an ownerless note
   const center = screenToWorld(innerWidth/2, innerHeight/2);
   const desiredX = center.x - NOTE_W/2;
   const desiredY = center.y - NOTE_H/2;
   const spot = findFreeSpot(desiredX, desiredY, null);
 
   const newRef = push(notesRef);
+  const now = Date.now();
   const n = {
     x: spot.x, y: spot.y,
     text: '', color: activeColor,
     rot: Number((Math.random()*6 - 3).toFixed(2)),
-    updatedAt: Date.now()
+    createdAt: now,
+    updatedAt: now,
+    ownerId: uid,
+    schemaVersion: 2,
+    border: { style: 'none', color: BORDER_COLORS[0] }
   };
   set(newRef, n).then(()=>{
     const el = elsById[newRef.key];
     if(el){
       const t = el.querySelector('.text');
-      setTimeout(()=> t.focus(), 30);
+      if(t) setTimeout(()=> t.focus(), 30);
     }
   });
 });
 
-// ---------- color swatches ----------
-document.querySelectorAll('.swatch').forEach(sw=>{
+// ---------- color swatches (sets the color new notes are created with) ----------
+document.querySelectorAll('#toolbar .swatch').forEach(sw=>{
   sw.addEventListener('click', ()=>{
-    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+    document.querySelectorAll('#toolbar .swatch').forEach(s=>s.classList.remove('active'));
     sw.classList.add('active');
     activeColor = sw.dataset.color;
   });
