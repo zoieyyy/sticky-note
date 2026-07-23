@@ -23,6 +23,9 @@
     --ui-text-dim: #b9a58a;
     --accent: #e8a33d;
     --good: #7fd28a;
+    --note-font: 'Kalam', cursive;
+    --note-radius: 0px;
+    --ui-radius: 16px;
   }
 
   *{ box-sizing: border-box; }
@@ -72,6 +75,7 @@
     outline: 2px solid transparent;
     outline-offset: 3px;
     border: 3px solid transparent;
+    border-radius: var(--note-radius);
   }
   .note.readonly{ cursor: default; }
   .note.dragging{
@@ -107,7 +111,7 @@
   }
 
   .note .text{
-    font-family:'Kalam', cursive;
+    font-family: var(--note-font);
     font-size:17px;
     line-height:1.35;
     color: var(--ink);
@@ -259,7 +263,7 @@
     background: var(--ui-bg);
     border: 1px solid rgba(255,255,255,0.08);
     padding:10px 14px;
-    border-radius:16px;
+    border-radius: var(--ui-radius);
     box-shadow: 0 12px 30px rgba(0,0,0,0.5);
     z-index:100;
   }
@@ -413,6 +417,136 @@
 
   ::selection{ background: rgba(232,163,61,0.4); }
 
+  /* ============ THEMES ============ */
+
+  /* --- Cherry Blossom --- */
+  body[data-theme="cherry-blossom"]{
+    --cork-1:#f9d7e3; --cork-2:#f3b8cd; --dot: rgba(255,255,255,0.5);
+    --paper-yellow:#ffe9c2; --paper-pink:#ffc2d6; --paper-mint:#d9f5e6;
+    --paper-blue:#d6ebff; --paper-lilac:#ecd6f7;
+    --ink:#5b2b40; --ui-bg:#6b2d46; --ui-bg-2:#7d3854;
+    --ui-text:#fdeef3; --ui-text-dim:#e3aec2; --accent:#ff6f9c;
+    --note-radius:6px;
+  }
+  #themeFX{ position:fixed; inset:0; pointer-events:none; z-index:4; overflow:hidden; display:none; }
+  body[data-theme="cherry-blossom"] #themeFX{ display:block; }
+  body[data-theme="cherry-blossom"] #themeFX .petal{
+    position:absolute; top:-5%; font-size:18px;
+    animation: petal-fall linear infinite;
+    opacity:0.85;
+  }
+  @keyframes petal-fall{
+    0%{ transform: translateY(0) translateX(0) rotate(0deg); }
+    50%{ transform: translateY(50vh) translateX(30px) rotate(180deg); }
+    100%{ transform: translateY(110vh) translateX(-20px) rotate(360deg); }
+  }
+
+  /* --- Retro TV --- */
+  body[data-theme="retro"]{
+    --cork-1:#181818; --cork-2:#0d0d0d; --dot: rgba(255,255,255,0.04);
+    --paper-yellow:#d4c483; --paper-pink:#c98fa0; --paper-mint:#8fc9a8;
+    --paper-blue:#7fa8c9; --paper-lilac:#a88fc9;
+    --ink:#161616; --ui-bg:#111; --ui-bg-2:#1c1c1c;
+    --ui-text:#e2ddc8; --ui-text-dim:#847e6c; --accent:#ffb020;
+    --note-font:'Courier New', monospace;
+  }
+  body[data-theme="retro"] #themeFX{ display:block; }
+  body[data-theme="retro"] #themeFX::before{
+    content:""; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.35) 0px, transparent 1px, transparent 3px);
+    mix-blend-mode: multiply;
+  }
+  body[data-theme="retro"] #themeFX::after{
+    content:""; position:absolute; inset:-10%;
+    background:
+      radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%),
+      repeating-radial-gradient(circle, rgba(255,255,255,0.03) 0px, transparent 2px, transparent 4px);
+    animation: tv-flicker 6s infinite;
+  }
+  @keyframes tv-flicker{
+    0%, 96%, 100%{ opacity:1; }
+    97%{ opacity:0.82; }
+    98%{ opacity:1; }
+    99%{ opacity:0.9; }
+  }
+
+  /* --- Retro Windows (95) --- */
+  body[data-theme="retro-windows"]{
+    --cork-1:#008080; --cork-2:#006666; --dot: rgba(255,255,255,0.07);
+    --paper-yellow:#c0c0c0; --paper-pink:#c0c0c0; --paper-mint:#c0c0c0;
+    --paper-blue:#c0c0c0; --paper-lilac:#c0c0c0;
+    --ink:#000000; --ui-bg:#c0c0c0; --ui-bg-2:#dfdfdf;
+    --ui-text:#000000; --ui-text-dim:#4a4a4a; --accent:#000080;
+    --note-font:'Courier New', monospace; --note-radius:0px; --ui-radius:0px;
+  }
+  body[data-theme="retro-windows"] .note{
+    box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff,
+                inset -2px -2px #808080, inset 2px 2px #dfdfdf,
+                5px 5px 0 rgba(0,0,0,0.35);
+    padding-top:30px;
+  }
+  body[data-theme="retro-windows"] .note::before{
+    content:"🗂 note.txt"; top:0; left:0; width:100%; height:22px;
+    transform:none; border-radius:0; box-shadow:none;
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color:#fff; font-size:11px; font-weight:bold; letter-spacing:0.02em;
+    display:flex; align-items:center; padding:0 6px;
+  }
+  body[data-theme="retro-windows"] .note::after{ display:none; }
+  body[data-theme="retro-windows"] .note .customizeBtn{
+    top:3px; right:4px; border-radius:0;
+    box-shadow: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080;
+    background:#c0c0c0; color:#000;
+  }
+  body[data-theme="retro-windows"] .note .godDeleteBtn{
+    border-radius:0;
+    box-shadow: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080;
+  }
+  body[data-theme="retro-windows"] .swatch,
+  body[data-theme="retro-windows"] #addBtn,
+  body[data-theme="retro-windows"] .zoomctl button,
+  body[data-theme="retro-windows"] #roomSelector select{
+    border-radius:0 !important;
+  }
+  body[data-theme="retro-windows"] #toolbar,
+  body[data-theme="retro-windows"] #roomSelector,
+  body[data-theme="retro-windows"] #status{
+    box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff,
+                inset -2px -2px #808080, inset 2px 2px #dfdfdf,
+                3px 3px 0 rgba(0,0,0,0.3);
+  }
+
+  /* --- Dark --- */
+  body[data-theme="dark"]{
+    --cork-1:#15171b; --cork-2:#0e0f12; --dot: rgba(255,255,255,0.05);
+    --paper-yellow:#f6f6f2; --paper-pink:#f8f1f3; --paper-mint:#eff6f1;
+    --paper-blue:#eff3f8; --paper-lilac:#f4f1f8;
+    --ink:#1c1c1c; --ui-bg:#1b1d21; --ui-bg-2:#25272c;
+    --ui-text:#f2f2f2; --ui-text-dim:#9a9ca3; --accent:#6c9eff;
+    --note-radius:4px;
+  }
+
+  /* --- Hacker Board --- */
+  body[data-theme="hacker"]{
+    --cork-1:#020402; --cork-2:#000; --dot: rgba(0,255,90,0.08);
+    --paper-yellow:#031a08; --paper-pink:#031a08; --paper-mint:#031a08;
+    --paper-blue:#031a08; --paper-lilac:#031a08;
+    --ink:#39ff6a; --ui-bg:#010401; --ui-bg-2:#04140a;
+    --ui-text:#39ff6a; --ui-text-dim:#1f8f45; --accent:#00ff66;
+    --note-font:'Courier New', monospace; --note-radius:2px;
+  }
+  body[data-theme="hacker"] .note{
+    border: 1px solid #1f8f45 !important;
+    box-shadow: 0 0 12px rgba(0,255,90,0.25), 0 10px 20px -6px rgba(0,0,0,0.7);
+  }
+  body[data-theme="hacker"] .note::before{ display:none; }
+  body[data-theme="hacker"] .note::after{ display:none; }
+  body[data-theme="hacker"] #themeFX{ display:block; }
+  body[data-theme="hacker"] #themeFX::before{
+    content:""; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(0,255,90,0.05) 0px, transparent 1px, transparent 3px);
+  }
+
   /* Mobile adjustments */
   @media (max-width: 640px) {
     #brand { display:none; }
@@ -433,19 +567,21 @@
 <div id="brand"><b>Corkboard</b> · infinite</div>
 
 <div id="roomSelector">
-  <label>📋 Room</label>
+  <label>🎨 Corkboard</label>
   <select id="roomSelect">
-    <option value="default">Default</option>
-    <option value="room1">Room 1</option>
-    <option value="room2">Room 2</option>
-    <option value="room3">Room 3</option>
-    <option value="room4">Room 4</option>
-    <option value="room5">Room 5</option>
+    <option value="default">Default Corkboard</option>
+    <option value="cherry-blossom">Cherry Blossom</option>
+    <option value="retro">Retro</option>
+    <option value="retro-windows">Retro Windows</option>
+    <option value="dark">Dark</option>
+    <option value="hacker">Hacker Board</option>
   </select>
-  <span class="roomBadge" id="roomBadge">#default</span>
+  <span class="roomBadge" id="roomBadge">Default Corkboard</span>
 </div>
 
 <div id="status"><span class="dot"></span><span id="statusText">Connecting…</span><span id="godBadge">⚡ GOD</span></div>
+
+<div id="themeFX"></div>
 
 <div id="viewport">
   <div id="world"></div>
@@ -568,6 +704,40 @@ function getRoomPresenceRef(room) {
   return ref(db, `rooms/${room}/presence`);
 }
 
+// ---------- themes ----------
+const THEMES = {
+  'default':        { label: 'Default Corkboard', fx: null },
+  'cherry-blossom': { label: 'Cherry Blossom',     fx: 'petals' },
+  'retro':          { label: 'Retro',              fx: 'static' },
+  'retro-windows':  { label: 'Retro Windows',      fx: null },
+  'dark':           { label: 'Dark',               fx: null },
+  'hacker':         { label: 'Hacker Board',       fx: 'scanlines' }
+};
+const themeFX = document.getElementById('themeFX');
+
+function applyTheme(room){
+  const theme = THEMES[room] || THEMES.default;
+  document.body.dataset.theme = room;
+  roomBadge.textContent = theme.label;
+  document.title = `Corkboard — ${theme.label}`;
+
+  themeFX.innerHTML = '';
+  if(theme.fx === 'petals'){
+    for(let i=0;i<18;i++){
+      const p = document.createElement('span');
+      p.className = 'petal';
+      p.textContent = '🌸';
+      p.style.left = Math.random()*100 + 'vw';
+      p.style.animationDuration = (8 + Math.random()*10) + 's';
+      p.style.animationDelay = (Math.random()*10) + 's';
+      p.style.fontSize = (14 + Math.random()*12) + 'px';
+      themeFX.appendChild(p);
+    }
+  }
+  // 'static' and 'scanlines' effects are pure CSS (::before/::after on
+  // #themeFX, scoped per theme) — no DOM needed beyond the empty div itself.
+}
+
 function switchRoom(room) {
   // Detach old listeners
   if (activeListeners.notes) {
@@ -599,8 +769,7 @@ function switchRoom(room) {
   presenceRootRef = getRoomPresenceRef(room);
 
   // Update UI
-  roomBadge.textContent = '#' + room;
-  document.title = `Corkboard — ${room}`;
+  applyTheme(room);
   
   // Save room preference
   localStorage.setItem('corkboard-room', room);
