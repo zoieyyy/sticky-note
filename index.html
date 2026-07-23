@@ -584,9 +584,15 @@
                 inset -2px -2px #808080, inset 2px 2px #dfdfdf,
                 3px 3px 0 rgba(0,0,0,0.3);
   }
-  /* Hide irrelevant borders section */
-  body[data-theme="retro-windows"] .popover section.sec-border { display: none; }
+/* Hide irrelevant styling tools (border only, since color changes the neon ink) */
+  body[data-theme="hacker"] .popover section.sec-border { display: none; }
 
+  /* Force popover swatches to match theme variables (overrides JS inline styles) */
+  .popover .swatch[data-color="yellow"] { background: var(--paper-yellow) !important; }
+  .popover .swatch[data-color="pink"] { background: var(--paper-pink) !important; }
+  .popover .swatch[data-color="mint"] { background: var(--paper-mint) !important; }
+  .popover .swatch[data-color="blue"] { background: var(--paper-blue) !important; }
+  .popover .swatch[data-color="lilac"] { background: var(--paper-lilac) !important; }
   /* --- Dark --- */
   body[data-theme="dark"]{
     --cork-1:#15171b; --cork-2:#0e0f12; --dot: rgba(255,255,255,0.05);
